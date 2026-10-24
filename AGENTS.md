@@ -8,6 +8,16 @@ Fuentes: [repositorio original](https://github.com/cocoscap/cocos-challenge), [c
 
 La consigna backend define el alcance funcional; los otros challenges no aportan requisitos a este trabajo. Ante diferencias entre la consigna y el SQL, documentarlas y resolverlas explícitamente.
 
+## Stack y convenciones
+
+- NestJS con el adaptador Express, TypeScript estricto y ESM sobre Node.js 24 LTS. PostgreSQL con `pg`; `decimal.js` para cálculos monetarios y ValidationPipe con class-validator/class-transformer para entradas HTTP. Versiones exactas en `package.json`/`package-lock.json` e imágenes en Dockerfile y Compose.
+- Arquitectura hexagonal por funcionalidad: puerto de entrada por CDU, implementación, puertos de salida y adapters. Contratos con parámetros y retornos explícitos, incluidos `Promise<Output>` cuando sean asíncronos; no crear interfaces para cada clase auxiliar.
+- Mantener dominio y CDU independientes de HTTP, Nest y persistencia. Usar modelos propios, mapear datos en los adapters y traducir errores de aplicación a HTTP en la entrada.
+- Componer dependencias en módulos con tokens centralizados. Usar `useExisting` para alias de providers existentes o `useFactory` para construir CDU independientes de Nest; evitar registrar dos instancias de una misma implementación por accidente.
+- Compartir el cliente de base a través del puerto transaccional para operaciones que deban ser atómicas. No convertir valores monetarios a coma flotante binaria para calcular importes.
+- Usar Vitest, Supertest y `@nestjs/testing`; las pruebas funcionales de órdenes deben utilizar PostgreSQL real aislado del estado de desarrollo. El SQL provisto se conserva como fuente y se monta solo para lectura durante la inicialización.
+- Ejecutar localmente con Docker Compose. Consultar README para comandos reales y el plan para pendientes funcionales; la infraestructura no resuelve automáticamente esas reglas.
+
 ## Preservación y decisiones
 
 - Antes de modificar archivos, inspeccionar instrucciones aplicables, estado Git, diferencias e índice. Identificar cambios ajenos y conservarlos.

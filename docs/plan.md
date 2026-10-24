@@ -1,12 +1,12 @@
-# Plan y decisiones de preimplementación
+# Plan y decisiones del proyecto
 
-Este documento prepara la revisión. Las propuestas no representan decisiones aprobadas ni autorizan implementación. Los requisitos y sus criterios están en [requisitos.md](requisitos.md); las reglas de autorización y sesiones, en [AGENTS.md](../AGENTS.md).
+Este documento concentra el estado, decisiones y planificación. Las propuestas no representan decisiones aprobadas. Los requisitos y sus criterios están en [requisitos.md](requisitos.md); las reglas de autorización y sesiones, en [AGENTS.md](../AGENTS.md).
 
 ## Etapa vigente y restricciones
 
-La etapa vigente es preparación y revisión documental. La gestión de ramas tampoco autoriza implementar. La autorización explícita para implementar sigue pendiente y es independiente de las autorizaciones de commit, push, PR y merge, según AGENTS.md.
+El usuario aprobó los puntos de arquitectura y solicitó incorporarlos al plan, crear Dockerfile y Compose, usar Express y fijar versiones estables actuales de PostgreSQL, pg y las demás dependencias. La etapa vigente prepara la base técnica y su arranque local; no implementa aún los CDU ni decide las reglas funcionales pendientes.
 
-En esta etapa no crear endpoints, lógica de negocio, pruebas, scaffold, dependencias, `package.json`, lockfiles, infraestructura ni pipelines. No modificar el esquema ni los datos de `database.sql`. Solo está autorizado el commit de setup descrito en la sección de versionado; no hacer push, PR ni merges. Mantener intactos los otros Markdown y preservar cualquier trabajo existente.
+Resolver o aprobar los supuestos D01–D08 antes de implementar el comportamiento afectado. Conservar el SQL original, los otros Markdown y cualquier trabajo existente. El usuario autorizó un único commit de la base técnica descrito en la sección de versionado; no hay autorización para otros commits, push, PR o merges.
 
 ## Estado verificado y decisiones confirmadas
 
@@ -16,30 +16,48 @@ En esta etapa no crear endpoints, lógica de negocio, pruebas, scaffold, depende
 - `origin` apunta al fork y `upstream` al original. El HEAD local, `origin/main` y el `main` remoto del original se verificaron en `abae77016b4e07e97161a9567239dcde5c0c00e1`. Se creó la rama local `chore/backend-preparation` para preparar documentación.
 - Por indicación del usuario, esa rama se renombró a `feature/backend-implementation`, única rama local de trabajo. Se eliminó la referencia local `main` después de verificar que apuntaba al mismo commit; se conservan el historial original, los archivos pendientes y `origin/main`. No se modificaron ramas remotas ni se hizo push.
 - El usuario reemplazó la limpieza inicial por la instrucción de conservar los otros `.md` tal cual. No se elimina ningún archivo. Permanecen frontend, fullstack, QA y React Native, sin tratarlos como fuentes del backend.
+- El setup quedó versionado en `57c518e` (`docs: prepare backend challenge setup`), con diez archivos y sin `.DS_Store`. No se hizo push. Posteriormente el usuario pidió continuar definiendo el stack y confirmó Docker para ejecución local.
 
-## Alternativas técnicas propuestas
+## Decisiones técnicas aprobadas
 
-Evaluación de complejidad para tres capacidades REST y cuatro tablas; no se hicieron benchmarks ni se instalaron paquetes. Las valoraciones de conveniencia son criterio de ingeniería, no requisitos de Cocos.
+Elecciones aprobadas por el usuario para tres capacidades REST y cuatro tablas. Las alternativas se conservan como justificación; no son requisitos impuestos por Cocos. Versiones estables comprobadas el 2026-10-24 contra el registro npm, las publicaciones de PostgreSQL y las imágenes oficiales. Dependencias directas sin rangos y resoluciones transitivas en el lockfile; sin benchmarks de rendimiento.
 
-| Área | Alternativas y costo | Recomendación pendiente de aprobación |
+| Área | Alternativas consideradas | Decisión aprobada |
 | --- | --- | --- |
-| Framework | [Express](https://expressjs.com/) ofrece una capa pequeña de routing/middleware y exige definir validación, errores y separación de responsabilidades. [NestJS](https://docs.nestjs.com/) aporta estructura, módulos e inyección de dependencias, con más convenciones y código inicial. | Express: handlers delgados, funciones de dominio y acceso a datos separado. NestJS es razonable si su estructura ya resulta familiar, pero no se necesita su complejidad para este alcance. |
-| Lenguaje | JavaScript satisface Node.js sin compilación adicional. TypeScript añade contratos estáticos y configuración; no sustituye validación de entradas. | TypeScript por los contratos de órdenes y resultados; es una propuesta, no una exigencia de la consigna backend. Elegir versión soportada de Node y compatibilidad de herramientas al comenzar, sin fijar versiones por memoria. |
-| Base y acceso | PostgreSQL con [node-postgres (`pg`)](https://node-postgres.com/features/queries) permite SQL parametrizado, agregados y control explícito de transacciones sobre el esquema existente. [Prisma](https://www.prisma.io/docs/orm/overview/introduction/what-is-prisma) ofrece cliente generado y tipado, a cambio de modelado/mapeo y generación adicionales; las consultas contables y bloqueos siguen requiriendo diseño. | PostgreSQL + `pg`: menor trabajo de adaptación para estas cuatro tablas y consultas contables. El motor no está impuesto por nombre, pero esta elección encaja con el DDL provisto. No proponer cambios de tablas sin una necesidad demostrada. |
-| Pruebas | [`node:test`](https://nodejs.org/api/test.html) evita otro runner; [Vitest](https://vitest.dev/guide/) añade herramientas de ejecución y una dependencia. [Supertest](https://github.com/forwardemail/supertest) permite verificar HTTP con cualquiera de los dos. | `node:test` + Supertest y una base PostgreSQL aislada para el test funcional de órdenes. Si se elige TypeScript, compilar también los tests para usar el runner; Vitest es alternativa si se prioriza su flujo con TypeScript. Resolver herramientas conjuntamente en T01. |
+| Framework | Express directo requiere menos estructura inicial. NestJS aporta módulos, providers e inyección de dependencias. | NestJS 12.2.0 y `@nestjs/platform-express` 12.2.0 con Express 5.3.0. Monolito modular; Fastify no está instalado. |
+| Lenguaje y runtime | JavaScript reduce configuración; TypeScript permite expresar contratos sin sustituir validación de entradas. | TypeScript 7.0.2 estricto y ESM; Node 24.22.1, última revisión de la rama [LTS elegida](https://nodejs.org/en/about/previous-releases). Tipos de Node 24.19.2, últimos compatibles con esa rama en vez de los tipos de Node 26. |
+| Base y acceso | SQL directo facilita agregaciones y control transaccional; un ORM añadiría modelado y generación para cuatro tablas. | PostgreSQL 18.6, [última estable publicada](https://www.postgresql.org/support/versioning/), y pg 8.23.1. PostgreSQL 19 está en RC y no se usa. No se modifica el esquema de referencia. |
+| Pruebas | Nest mantiene sus utilidades independientes del runner. | Vitest 5.0.5, Supertest 7.3.1 y `@nestjs/testing` 12.2.0. Unitarias de reglas/CDU y test funcional con PostgreSQL real; suite y configuración específica de los futuros tests aún pendientes. |
+| Ejecución local | Compose coordina servicios y espera su disponibilidad. | Dockerfile por etapas y Compose con `app`, `db` persistente y `db-test` efímera bajo perfil `test`. SQL montado solo para lectura y healthchecks de arranque. |
+| Dinero y entradas | La escala de base no reemplaza la aritmética decimal de la aplicación. | decimal.js 10.6.0; ValidationPipe con class-validator 0.15.1 y class-transformer 0.5.1; `@nestjs/config` 12.0.1. El arranque actual valida PORT; reglas de dinero y validación del adapter de datos se completarán con sus CDU. |
+
+Organización aprobada: controller → puerto de entrada del CDU → implementación del CDU → puertos de salida → adapters de infraestructura, agrupados por funcionalidad. Una interfaz por CDU con parámetros y retornos explícitos; puertos de salida para repositorios, cotizaciones y transacciones, sin interfaces para cada clase auxiliar. Dominio y CDU independientes de Nest, HTTP y SQL; modelos propios y mapeadores en adapters. Tokens centralizados, como [Symbol](https://docs.nestjs.com/fundamentals/custom-providers), porque las interfaces desaparecen al compilar. Componer con `useFactory` o alias `useExisting`, evitando registros duplicados; errores de aplicación traducidos a HTTP en la entrada. Adapter permite reemplazar dependencias, no garantiza escalabilidad operativa. Estos contratos se crearán al implementar los CDU, sin copiar el scaffold de referencia.
 
 Propuesta de diseño: calcular portfolio desde órdenes, sin una tabla adicional de posiciones. En el envío, realizar lectura de recursos, validación y persistencia dentro de una transacción usando el mismo cliente de `pg`; un rechazo por recursos se guarda y confirma como resultado de negocio, no se pierde por un rollback genérico. Para evitar que dos órdenes gasten los mismos recursos, evaluar bloqueo de la fila de usuario durante esa transacción. Es una protección propuesta para R07, no un requisito independiente de la consigna. Referencias: [transacciones de pg](https://node-postgres.com/features/transactions) y [bloqueos de PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html).
 
-No se propone un servicio externo de mercado, microservicios, caché ni infraestructura adicional. En esta etapa tampoco se crean archivos de configuración. No hacen falta otros documentos o plantillas: este plan y la matriz de requisitos cubren la revisión.
+La infraestructura se limita a Docker local. No se justificaron microservicios, caché ni un servicio externo de mercado. Dockerfile fija `node:24.22.1-bookworm-slim`; Compose fija `postgres:18.6-bookworm`. Para PostgreSQL 18 el volumen apunta a `/var/lib/postgresql`, conforme a la [imagen oficial](https://hub.docker.com/_/postgres); el seed se ejecuta solo en volúmenes vacíos. La base de tests usa tmpfs y no comparte el volumen de desarrollo. La API tiene un bootstrap mínimo con Express, validación de entrada y cierre por señales, sin endpoints funcionales ni conexión de repositorios implementada. Los archivos de entorno, build y dependencias generadas se excluyen de Git y del contexto de imagen según corresponda.
 
-## Documentación técnica pendiente
+## Referencia secundaria: skeleton hexagonal
 
-Cuando se autorice la implementación, incorporar progresivamente el stack aprobado y sus versiones, las convenciones de código adoptadas y los comandos reales. No tratarlos como definidos por esta preparación:
+El usuario aportó su [skeleton](https://github.com/robinalva28/nestjs-hexagonal-back-skeleton/tree/5e9da796c64132fabadcb29c4bfbbe19d319b1e4) como inspiración, sin convertirlo en referencia absoluta ni fuente de requisitos. Revisión estática de README, dependencias, configuración TypeScript, módulos, puertos, servicio, adapters y pruebas en el commit `5e9da796c64132fabadcb29c4bfbbe19d319b1e4`; no se ejecutó ni copió código.
 
-- `AGENTS.md`: stack y convenciones de estructura, nombres, acceso a datos y pruebas que efectivamente se adopten en T01/T02; sin anticipar configuraciones inexistentes.
-- `README.md`: comandos de instalación, ejecución, preparación de datos y verificaciones solo cuando existan y se hayan comprobado, indicando requisitos y resultados reales.
+| Hallazgo del skeleton | Adaptación aprobada para Cocos |
+| --- | --- |
+| `application/port/in`, `port/out`, servicio y adapters separan la entrada HTTP del acceso a datos. | Conservar esa organización por funcionalidad para portfolio, instrumentos y órdenes. Las interfaces de entrada por CDU definen una frontera útil; no crear interfaces para cada clase auxiliar. |
+| GetEchoUseCase y EchoPort omiten tipos de retorno; hay campos sin tipo y opciones de comprobación desactivadas. | Contratos explícitos de entrada y `Promise<Output>`, TypeScript estricto y modelos propios. Evitar que esquemas de persistencia lleguen al controller o a los contratos de aplicación. |
+| El módulo registra las clases y vuelve a registrarlas mediante `useClass`; EchoService lanza `NotFoundException` de Nest. | Una implementación por provider; usar `useExisting` si se necesita un alias, o `useFactory` para componer CDU independientes de Nest. Tokens centralizados. Errores propios de aplicación traducidos a HTTP en el adapter de entrada. Véase [providers de Nest](https://docs.nestjs.com/fundamentals/custom-providers). |
+| Usa MongoDB/Mongoose y Nest 9; el e2e conserva `/` y `Hello World!`, mientras la aplicación expone `/api/echo`. | No trasladar versiones, almacenamiento ni expectativas del ejemplo. PostgreSQL/pg, puerto transaccional con cliente compartido y pruebas funcionales de órdenes con base real aislada. Las versiones verificadas están fijadas en el manifiesto y lockfile. |
 
-Hasta entonces, las alternativas técnicas permanecen como propuestas de este plan y no se agregan instrucciones operativas de aplicación.
+El usuario aprobó posteriormente estas adaptaciones y el stack descrito arriba. La referencia sigue siendo secundaria y no resuelve D01–D08 ni añade requisitos del skeleton al challenge. No se importa su scaffold ni sus funcionalidades de ejemplo.
+
+## Convenciones y documentación operativa
+
+Las reglas aprobadas están en AGENTS.md; versiones y resoluciones npm en el manifiesto y lockfile; imágenes en Dockerfile/Compose; comandos reales y alcance del arranque en README. Mantener estos archivos sincronizados al avanzar:
+
+- `AGENTS.md`: ampliar convenciones solo cuando se adopten al implementar los CDU y adapters.
+- `README.md`: añadir comandos y verificaciones cuando existan, distinguiendo sintaxis/configuración comprobada de ejecución de contenedores y pruebas funcionales.
+
+No documentar funcionalidades ni pruebas pendientes como si estuvieran implementadas.
 
 ## Pendientes funcionales
 
@@ -58,13 +76,13 @@ No corregir los datos ni resolver estos puntos incorporando reglas de los otros 
 
 ## Tareas futuras y dependencias
 
-Todas son planificación: ninguna tarea de aplicación se ejecuta en esta etapa.
+La preparación inicial está versionada. La parte técnica de T01 está aprobada y se prepara el arranque de T02; los contratos D01–D08 y las funcionalidades T03–T06 siguen pendientes.
 
 | Tarea | Depende de | Entrega y validación prevista |
 | --- | --- | --- |
-| T00 — Revisar preparación | Esta documentación | Revisar requisitos, propuestas y límites. Autorizar explícitamente pasar a implementación; el permiso no incluye commits ni publicación. |
-| T01 — Cerrar contrato y stack | T00 | Resolver D01–D08 o aprobar supuestos concretos; elegir framework, lenguaje, acceso, runner y versiones compatibles. Vincular resultados esperados con R01–R15. |
-| T02 — Base técnica y datos | T01 | Solo en la etapa autorizada: configurar el mínimo de aplicación, conexión y base aislada. Importar el SQL original sin editarlo y verificar nombres, escala y lectura. Definir transacciones y contrato de errores. |
+| T00 — Revisar preparación | Esta documentación | Setup versionado en 57c518e. El usuario solicitó continuar hacia implementación, comenzando por definir el stack; no autorizó nuevos commits ni publicación. |
+| T01 — Cerrar contrato y stack | T00 | Stack y arquitectura aprobados; versiones verificadas y fijadas. Resolver D01–D08 o aprobar supuestos antes del comportamiento afectado; vincular resultados esperados con R01–R15. |
+| T02 — Base técnica y datos | Stack aprobado de T01 | Bootstrap, dependencias y Dockerfile/Compose preparados. Validar ejecución local y seed sin editar; completar conexión, transacciones y contrato de errores con los adapters, antes de avanzar a sus funcionalidades. |
 | T03 — Consultas contables y de mercado | T02; D01–D03, D07 | Cálculo de tenencias, cash/disponibilidad, costo y último precio; validar casos deterministas y tratamiento aprobado del seed inconsistente. Base compartida por portfolio y órdenes. |
 | T04 — Portfolio y búsqueda | T03 para portfolio; T02 para búsqueda; D05/D06 | Implementar R01/R02 y contraste con los criterios aprobados; no copiar contratos de otros challenges. La búsqueda puede avanzar sin esperar el cálculo de portfolio. |
 | T05 — Envío de órdenes y test funcional | T03; D02/D04/D05/D07 | BUY/SELL, MARKET/LIMIT, cantidad/monto, persistencia de FILLED/NEW/REJECTED y actualización observable. Incluir el test funcional de R14 junto al comportamiento. Proponer casos de insuficiencia, conversión y concurrencia por riesgo, sin inventar cobertura obligatoria. |
@@ -76,20 +94,22 @@ Los commits futuros se agrupan por tarea coherente y se autorizan individualment
 
 ## Condiciones para comenzar la implementación
 
-1. Revisión de esta etapa y autorización explícita para implementar; todavía pendiente y sin implicar permisos de commit, push, PR o merge.
-2. Acordar stack y herramientas de T01; resolver o aprobar supuestos para D01–D08 antes de codificar los comportamientos afectados.
+1. El usuario autorizó la base técnica, dependencias y Docker local. Esto no implica nuevos permisos de commit, push, PR o merge.
+2. El stack está aprobado. Resolver o aprobar supuestos para D01–D08 antes de codificar los comportamientos afectados.
 3. Verificar nuevamente trabajo local, rama y remotos. El fork y su historial ya están disponibles; no hay un bloqueo de acceso conocido.
-4. Disponer de un entorno PostgreSQL aislado si se aprueba esa propuesta, sin modificar la fuente SQL ni usar servicios de producción. No se preparó infraestructura en esta etapa.
+4. Verificar el arranque de los servicios Compose y el seed en PostgreSQL aislado, sin modificar la fuente SQL ni utilizar servicios de producción. La configuración está preparada; registrar por separado su validación y su ejecución real.
 
 ## Versionado autorizado y flujo de entrega propuesto
 
 La preparación y la implementación posterior, cuando se autorice, se mantienen en `feature/backend-implementation`, sin crear una rama adicional para la solución. La base sigue siendo el main original conservado en el fork.
 
-El usuario autorizó expresamente un único commit con los diez archivos de documentación, diseño y registros del setup, excluyendo `.DS_Store`, con mensaje `docs: prepare backend challenge setup`. La autorización incluye el registro de esta aprobación y el estado del plan; no habilita otros commits, implementación, push, PR ni merge. Las reglas de commits atómicos y autorizaciones independientes permanecen vigentes.
+El usuario autorizó el commit `docs: prepare backend challenge setup`, realizado como `57c518e` con los diez archivos del setup y sin `.DS_Store`. Esa autorización ya fue utilizada y no habilita otros commits, push, PR ni merge. La solicitud posterior de continuar con la implementación se trata con el alcance definido al inicio de este plan. Las reglas de commits atómicos y autorizaciones independientes permanecen vigentes.
+
+Posteriormente autorizó un único commit de la base técnica preparada: `chore: bootstrap NestJS Express and Docker environment`. Incluye quince archivos de arranque, Docker, dependencias, convenciones, documentación y registro de sesión. Excluye `.env`, `.DS_Store`, dependencias instaladas y archivos compilados. No habilita push, PR, merge ni commits adicionales.
 
 Flujo propuesto: `feature/backend-implementation` local → commits autorizados → publicación autorizada en el fork → PR autorizado hacia `main` del **repositorio confirmado por el usuario**. Hay dos destinos posibles: main del fork o main de `cocoscap/cocos-challenge`. Ninguno fue elegido. Antes de cualquier publicación, confirmar repositorio base, rama base y rama de origen; no asumir que `origin` decide el destino del PR. El usuario mantiene la instrucción de no hacer push.
 
-## Criterios de finalización de esta etapa
+## Criterios de finalización de la preparación inicial
 
 - Estado del fork, copia local e historial verificado o bloqueo concreto documentado; fuentes originales y Markdown de otros challenges conservados intactos.
 - Documentación lista para revisión: requisitos verificables, plan con dependencias, decisiones confirmadas separadas de propuestas, dudas y condiciones de inicio; documentación técnica futura identificada como pendiente.
@@ -105,6 +125,15 @@ Resultado: seis archivos originales idénticos byte por byte al commit de refere
 HEAD permanece en el commit original; rama `chore/backend-preparation`, índice vacío, cinco archivos nuevos sin seguimiento y ningún cambio en archivos versionados. Fork, padre, origen de red, main y remotos verificados; sin repositorios anidados ni commits nuevos. No se crearon archivos de aplicación, pruebas, dependencias, infraestructura o pipelines, ni se hicieron push, PR o merges. Se revisaron únicamente documentos y Git: no se ejecutó SQL ni se realizaron pruebas de aplicación.
 
 Revisión de reglas permanentes: etapa e historia concentradas en este plan; autorizaciones independientes y criterios documentales definidos en AGENTS.md; stack, convenciones y comandos reales pendientes de la etapa autorizada. Se contrastó la coherencia con requisitos y README, sin cambiar esos archivos. `git diff --check` y su variante para el índice, sin errores; revisión adicional con `--no-index --check` de los cinco documentos sin seguimiento, sin diagnósticos de espacios. Enlaces locales y privacidad del registro comprobados. La comparación con el inicio de esta corrección limita los cambios a AGENTS.md, este plan y el registro de sesión; el resto de los archivos, HEAD e índice permanecen intactos.
+
+Validación de la base técnica autorizada:
+
+- Instalación con versiones exactas, lockfile y resolución de dependencias sin errores de peers; Node 24.22.1 y npm 11.19.1 incluidos en esa distribución. `npm run typecheck` y `npm run build` correctos. Sin Fastify en el árbol instalado.
+- Configuración Compose validada con el perfil de pruebas. Imagen por etapas construida en Linux arm64; `npm ci` de build y runtime correctos, con dependencias de desarrollo omitidas en la imagen final. API y base de desarrollo saludables; proceso de API sin privilegios de root.
+- Arranque nativo y en contenedor usando Express; raíz HTTP 404 al no existir aún endpoints del challenge. PORT inválido rechazado al iniciar. La API se publica localmente en 3001 mediante `.env` ignorado, preservando el proceso existente en 3000; la base también acepta conexiones locales en 5432.
+- PostgreSQL 18.6 y seed verificados tanto en desarrollo como en la base de pruebas: 4 usuarios, 66 instrumentos, 11 órdenes y 126 cotizaciones. Consultas de lectura mediante pg; NUMERIC recibido como texto y comprobación decimal exacta. No se alteró el SQL de origen.
+- Se inició el perfil existente de Colima sin cambiar el contexto Docker activo. Compose 5.6.1 y Buildx 0.38.1 se usaron desde herramientas temporales verificadas, sin instalación global. La base de pruebas y su contenedor efímero se retiraron después de validar; API y base de desarrollo quedan en ejecución.
+- No se creó ni ejecutó una suite funcional de órdenes ni se implementaron CDU, repositorios o reglas D01–D08. Estas comprobaciones validan infraestructura y arranque, no la solución funcional del challenge; se realizaron antes del commit de base técnica autorizado. Sin push.
 
 ## Revisión del diseño de alto nivel
 
