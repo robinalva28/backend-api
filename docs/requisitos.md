@@ -30,7 +30,7 @@ Los criterios siguientes son verificaciones futuras; todavía no existen endpoin
 - **Libertad de modelado:** la consigna permite modelar transferencias como órdenes y modificar tablas con justificación. Esto no exige endpoints de transferencias ni cambios de esquema. El SQL ya contiene movimientos de efectivo que deben interpretarse.
 - **No requerido:** autenticación ni simulación de mercado. Se excluyen de la propuesta inicial; no son funcionalidades por construir para completar este challenge.
 - **No especificado:** rutas exactas, forma de seleccionar usuario, contratos y códigos HTTP, cancelación como endpoint, motor de base, TypeScript, ORM concreto, cobertura mínima porcentual, Docker, CI o despliegue. Cualquier incorporación requiere justificación; no se toma de los otros challenges.
-- **Restricción de esta etapa:** solo preparación documental. No implementar ni ejecutar pruebas de aplicación, instalar dependencias, generar scaffold/configuraciones de aplicación, modificar SQL, hacer commits, push, PR o merges.
+- **Alcance autorizado posterior a la preparación:** base técnica de NestJS con Express, dependencias e infraestructura Docker local, según el [plan](plan.md). Las decisiones funcionales pendientes no se resuelven por esa autorización. El SQL y las otras consignas se conservan; nuevos commits y publicación requieren autorización independiente.
 
 ## Observaciones verificadas del SQL
 
