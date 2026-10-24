@@ -1,0 +1,7 @@
+# Sesión de mejora de prompt — 2026-10-24 16:07
+
+- **Usuario (resumen):** Proporcionó instrucciones de precisión, alcance documental, autorizaciones independientes y registro por sesión con ofuscación previa de datos personales.
+- **Usuario (resumen):** Solicitó mejorar un prompt para que otro agente se conecte a Excalidraw mediante MCP y complete un diseño de alto nivel existente, conservando su formato, analizando requisitos y mencionando herramientas sin profundizar ni ser verboso.
+- **Agente (resumen):** Revisó instrucciones, fuentes documentales y estado Git. Propuso un prompt que exige inspeccionar el diagrama, usar las fuentes del backend, conservar el estilo y nivel de abstracción, completar componentes y flujos necesarios, distinguir propuestas de decisiones y verificar el resultado visual. El agente ejecutor debe solicitar identificación del diagrama solo si no puede determinarlo.
+- **Decisión:** Esta solicitud solo mejora el prompt; no autoriza ejecutar sus instrucciones, modificar Excalidraw, implementar ni realizar commits o publicaciones.
+- **Validación y privacidad:** Registro nuevo, sin enlaces locales ni datos personales; revisión previa de ofuscación y del contenido resultante. Solo se añadió este archivo; los documentos y cambios previos se conservaron. Comprobaciones de espacios sin errores y diferencias e índice revisados; índice vacío. No se ejecutaron pruebas de aplicación.
