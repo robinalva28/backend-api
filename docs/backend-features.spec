@@ -1,0 +1,275 @@
+# Especificación funcional y técnica — Backend
+
+Estado: especificación parcial para revisión, actualizada el 2026-10-27. Formato documental Markdown con extensión `.spec`; no es código, una prueba ejecutable ni un formato asociado a una herramienta SDD específica.
+
+## Alcance y autoridad
+
+- Objetivo: convertir las decisiones aprobadas en reglas trazables y criterios de aceptación para desarrollo guiado por especificaciones (SDD).
+- Esta entrega desarrolla D01 y D03–D08; D02 se incorpora como dependencia ya aprobada. La alternativa A de D05 fue seleccionada. D07 confirma selección temporal, retorno diario null sin base válida y errores genéricos con diagnóstico interno; D08 confirma cancelación independiente y recuperación sin reabrir órdenes. El contrato residual de D06 se cierra por aprobación explícita durante la coordinación SDD del 2026-10-27. Permanecen las demás preguntas de contrato y propuestas explícitas. Ninguna propuesta se aprueba por referencia.
+- **FUENTE** identifica obligaciones de la consigna; **CONFIRMADO**, decisiones del usuario; **PROPUESTA**, alternativas sin aprobar; **PENDIENTE**, información o decisiones que impiden cerrar el comportamiento afectado.
+- La aprobación documental no autoriza implementar aplicación, pruebas, migraciones, commits o publicación. El código existente solo contiene arranque y configuración; no hay implementación funcional verificada de estas features.
+- [Consigna backend](../backend-challenge.md): fuente funcional completa. [Requisitos](requisitos.md): R01–R15. [Plan](plan.md): decisiones, alcance y autorizaciones. [SQL original](../database.sql): evidencia de esquema y datos.
+- El [diagrama](diseno-alto-nivel.excalidraw) es una referencia secundaria, actualizada con el High Level Design y las cuatro secuencias aprobadas; no reemplaza las reglas detalladas de esta especificación. No se usan los otros challenges como requisitos.
+- **Aprobación del 2026-10-27:** el usuario aprobó los cuatro diagramas de secuencia y sus flujos concretos. Se confirman las rutas de portfolio/envío, la búsqueda literal ILIKE con sus respuestas dibujadas y los códigos representados de envío/cancelación. Las notas sin una definición concreta conservan ese estado; solo el seguimiento de redondeo monetario solicitado se identifica como follow-up. Aprobar los diagramas no autoriza implementar.
+
+## F01 — Portfolio y rendimiento de posiciones (D01)
+
+### Reglas
+
+- **FUENTE — R01, R09, R11, R12:** el portfolio devuelve valor total de cuenta, pesos disponibles y posiciones con cantidad, valor monetario y rendimiento total porcentual. Se utilizan movimientos pertinentes de `orders` y ejecuciones `FILLED`; referencias: consigna, líneas 5 y 27–32.
+- **CONFIRMADO:** valor de una posición = cantidad neta ejecutada × último `close`; valor total de cuenta = efectivo contable + suma de los valores de las posiciones. No restar reservas otra vez del total.
+- **CONFIRMADO:** rendimiento de la posición abierta basado en costo promedio ponderado móvil, procesando ejecuciones en orden temporal. No añadir una métrica de ganancias realizadas. El retorno diario es una métrica distinta y no reemplaza al total.
+- **Desarrollo matemático de la decisión confirmada, para historias válidas:** sean `Q` la cantidad y `C` el costo remanente. Una compra ejecutada de `s` acciones a `p` deja `Q + s` y `C + s × p`. Una venta ejecutada de `s <= Q`, con `Q > 0`, deja `Q - s` y `C - s × (C / Q)`. El precio de venta afecta al efectivo; no redefine el costo unitario remanente.
+- Para una posición abierta con `Q > 0` y `C > 0`, valor `V = Q × close` y rendimiento total porcentual `100 × (V - C) / C`. Al vender toda una posición válida, cantidad y costo remanente quedan en cero. No extrapolar estas fórmulas a historias negativas o costo inválido.
+- **CONFIRMADO — dependencia D02:** efectivo disponible = efectivo contable menos importes reservados por `BUY NEW`; acciones disponibles = tenencia ejecutada menos cantidades reservadas por `SELL NEW`. Las reservas no son ejecuciones.
+- **PENDIENTE:** desempate de ejecuciones con igual `datetime`, representación de posiciones vacías y denominadores inválidos, precisión de divisiones y desempate del redondeo de presentación. **PROPUESTA:** desempatar por `id`; debe aprobarse porque el orden afecta el costo móvil. D03 sigue abierto para historias negativas y D07 para cotizaciones.
+- La fórmula de retorno diario y su exposición se proponen en F07, separadas del rendimiento total. La elección de calcular portfolio al consultar, sin tabla de posiciones, sigue como propuesta técnica del plan.
+
+### Criterios de aceptación futuros
+
+- **AC01:** con efectivo inicial de 10.000, comprar 10 acciones a 100 y 10 a 200 deja 20 acciones, costo 3.000 y promedio 150. Vender 5 a 180 deja 15 acciones, costo 2.250 y efectivo 7.900. Con último `close` de 180, valor de posición 2.700, rendimiento total 20% y valor de cuenta 10.600. La ganancia realizada no se añade de nuevo al efectivo ni al rendimiento de la posición abierta.
+- **AC02:** con efectivo contable 1.000 y compras `NEW` por 300, disponible 700. La reserva no resta 300 adicionales del valor total de cuenta. Una orden rechazada o cancelada no aporta ejecución ni reserva.
+- **AC03:** las compras y ventas `FILLED` se incluyen independientemente de ser MARKET o LIMIT. La consulta posterior a una ejecución refleja sus efectos. No se fija aquí un resultado esperado para D03 o precios ausentes.
+
+## F03 — Inconsistencia histórica a investigar (D03)
+
+**Descripción breve:** una misma cuenta tiene 20 acciones compradas y ejecutadas del instrumento 31, pero registra una venta ejecutada de 30: la tenencia neta es −10. Existe además una compra de 60 en `NEW`, que todavía no es tenencia ejecutada y no cubre esa venta.
+
+Evidencia: SQL, líneas 269, 271 y 273. La consigna exige rechazar ventas sin acciones suficientes, línea 25. El archivo no permite determinar si falta un movimiento o si la venta histórica es errónea.
+
+- **CONFIRMADO:** conservar los datos originales y no permitir nuevas ventas sin acciones suficientes.
+- **PENDIENTE de investigación por el usuario:** representación de cantidad negativa, costo/rendimiento no calculable y efecto sobre valoración y total. Las recomendaciones previas de warnings, valores nulos o valoración algebraica no están aprobadas.
+- No corregir el seed, completar compras ficticias, sumar órdenes `NEW` como ejecuciones ni inferir soporte de ventas en corto.
+- **AC04 — evidencia documental:** la agregación de los movimientos ejecutados identificados da −10; la respuesta HTTP esperada sigue pendiente. No se presenta un comportamiento de aplicación como validado.
+
+## F04 — Entrada de órdenes, cantidad, monto y escala (D04)
+
+### Reglas confirmadas
+
+- **FUENTE — R03–R07:** BUY/SELL y MARKET/LIMIT; cantidad exacta o monto en pesos, máximo de acciones enteras; precio obligatorio para LIMIT y último `close` para MARKET. Referencias: consigna, líneas 7, 15–25 y 31.
+- **CONFIRMADO:** exactamente uno entre `size` y `amount`; valores positivos y `size` entero. Rechazar ambos presentes, ambos ausentes, fracciones de acciones y cantidad calculada cero.
+- **CONFIRMADO:** el modo por monto se admite en BUY y SELL. Cantidad calculada = parte entera inferior de `amount / precio de referencia`; usar precio LIMIT o último `close` para MARKET. El monto es el límite de la conversión, no una transferencia de efectivo por sí mismo.
+- La disponibilidad se valida después de calcular esa cantidad. Si no alcanza, persistir `REJECTED`; no reducir automáticamente la cantidad al saldo disponible ni convertir la orden en una ejecución parcial.
+- **CONFIRMADO:** LIMIT exige precio positivo, con máximo dos decimales; MARKET rechaza un precio enviado por el cliente.
+- **CONFIRMADO en la aclaración de esta revisión:** `amount` también admite como máximo dos decimales. Los valores que excedan la escala aceptada se rechazan; no se redondean silenciosamente para admitir la solicitud.
+- Mantener aritmética decimal y presentar importes monetarios con dos decimales. La regla de entrada nueva no es una instrucción para modificar datos históricos.
+- **FUENTE y dependencia D02:** con recursos suficientes, MARKET queda FILLED y modifica efectivo/tenencia: BUY resta `size × price` al efectivo y suma `size` acciones; SELL hace lo inverso. LIMIT queda NEW, sin efectos ejecutados y con la reserva aprobada. Por insuficiencia, ambas modalidades quedan REJECTED sin ejecución ni reserva. No se incorpora ejecución diferida de LIMIT.
+- **PENDIENTE de contrato:** representación HTTP de decimales, tratamiento léxico de ceros finales extra como `10.000`, notación exponencial y rangos. **PROPUESTA:** strings decimales sin exponente y máximo dos dígitos escritos tras el separador, admitiendo `10`, `10.0` y `10.00`; no confundir esta propuesta con la normalización ya aprobada para valores válidos.
+- El DDL limita `size` a INT y `price` a NUMERIC(10, 2). **PROPUESTA:** validar que los valores calculados sean representables antes de persistir, con un error de entrada definido; no esperar un error SQL ni truncar. Los importes agregados no heredan automáticamente el rango de una columna de precio.
+
+### Evidencia sobre la precisión histórica y costo de preservarla
+
+- El archivo SQL declara `orders.price` y las cinco columnas monetarias de `marketdata` con escala 2. Muchos literales tienen ocho posiciones decimales, pero los ceros finales no representan precisión adicional.
+- Inspección estática de todos los literales de cotización: solo `previousClose = 1047.16600000`, línea 218, requiere más de dos decimales efectivos. Con el DDL provisto se almacena como `1047.17`; no se necesita una limpieza nueva para producir ese redondeo. El resto de los decimales adicionales inspeccionados son ceros.
+- **Limitación de verificación:** no se consultó la base viva; los motores Docker de los contextos disponibles no estaban accesibles. Esta conclusión describe la carga con el esquema del repositorio, no certifica un esquema externo que pudiera haberse alterado.
+- **Alternativa evaluada, no aprobada:** ampliar la precisión futura es un cambio pequeño de esquema en seis columnas, pero recuperar el valor ya redondeado exige reconciliarlo con la fuente, definir una migración/carga reproducible y comprobar no sobrescribir datos posteriores. Cambiar solo la columna no recupera los decimales perdidos. No hay evidencia para estimar horas ni garantizar que una base externa solo contenga ese caso.
+- **Decisión vigente:** conservar la escala y la fuente originales, presentar dos decimales y no realizar una migración de precisión en este alcance. La regla de rechazo solo aplica a solicitudes nuevas.
+- **Follow-up solicitado:** evaluar riesgos del redondeo en importes, reservas, conversión por monto y rendimientos; revisar si compensa preservar mayor precisión histórica/futura. Seguimiento breve en [README](../README.md#follow-ups).
+- Referencia técnica: [NUMERIC y coerción a escala en PostgreSQL](https://www.postgresql.org/docs/18/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL). Esta limitación no autoriza coma flotante binaria ni redondear indiscriminadamente pasos intermedios.
+
+### Criterios de aceptación futuros
+
+- **AC05:** monto 1.000 y precio aplicable 300 producen 3 acciones, tanto para BUY como SELL. La aceptación requiere además recursos suficientes para esas 3 acciones. Si solo hay 2 disponibles para SELL, queda `REJECTED`, no una venta de 2.
+- **AC06:** cantidad 3 se conserva; cantidad fraccionaria, cero o negativa, monto no positivo, ambos modos o ninguno se rechazan como entrada inválida, sin orden ni reserva.
+- **AC07:** LIMIT con precio 10.12 es admisible en escala; 10.123 no lo es. Lo mismo aplica a `amount`. Un monto inferior al precio de una acción produce cantidad cero y se rechaza sin orden. Los ceros finales adicionales esperan el cierre del contrato léxico.
+- **AC08:** MARKET con precio enviado se rechaza como entrada; LIMIT sin precio se rechaza. Una MARKET válida usa el precio de mercado y una LIMIT válida su precio admitido, conservando coherencia entre validación, ejecución/reserva y persistencia. Los precios ausentes se resolverán en D07.
+- **AC09:** leer las filas históricas no dispara una reescritura para hacerlas pasar por las nuevas validaciones de entrada.
+
+## F05 — Contrato de envío e idempotencia (D05)
+
+### Contrato aceptado y elementos por cerrar
+
+- **FUENTE — R03, R07 y R14:** persistir órdenes y rechazos por insuficiencia; implementar un test funcional de envío. La consigna no exige idempotencia ni prescribe códigos HTTP.
+- **CONFIRMADO:** seleccionar usuario por ruta para portfolio y órdenes; errores estructurales sin crear una orden; insuficiencia como `REJECTED` persistido; UUID del cliente en `Idempotency-Key`; conflicto explícito cuando se reutiliza la clave con parámetros diferentes.
+- **CONFIRMADO:** comparar valores decimales normalizados después de validarlos; `10`, `10.0` y `10.00`, si son representaciones válidas, son equivalentes para la misma clave. La normalización no puede convertir una entrada inválida en válida.
+- **Rutas confirmadas al aprobar las secuencias:** GET `/users/:userId/portfolio` y POST `/users/:userId/orders`. Payloads completos, nombres de campos y serialización todavía requieren definición. El contrato de búsqueda se registra en F06.
+- **Códigos confirmados al aprobar las secuencias:** 409 para conflicto de clave, 201 para una orden nueva persistida incluso REJECTED y 200 para recuperar una ya procesada. **PROPUESTA restante de errores de envío:** 400 para estructura/escala inválida y 404 para usuario o instrumento inexistente. D07 conserva el caso de precio ausente y los errores técnicos por cerrar.
+- Validar UUID requerido y usuario válido es necesario para aplicar el acuerdo; el tipo de UUID admitido, límites de entradas y respuesta de clave ausente/malformada quedan por expresar en el contrato. No se añade autenticación: un UUID y un `userId` no acreditan identidad ni propiedad.
+
+### Garantías ya confirmadas
+
+- Clave única por `(usuario, UUID)`, conservada mientras exista la orden. UUID diferente representa otra operación aun con iguales parámetros.
+- Mismo usuario, UUID y parámetros originales normalizados devuelve el resultado persistido, sin otra orden, reserva o ejecución; no vuelve a obtener precio ni disponibilidad para decidir esa operación.
+- Comparar instrumento, side, tipo y modo cantidad/monto con su valor original; incluir precio LIMIT cuando corresponda. No usar solo cantidad/precio derivados: solicitudes por monto distintas pueden producir la misma cantidad.
+- Conservar UUID y datos de comparación en `orders`, sin tabla adicional, caché ni TTL. Orden y metadatos se confirman en la misma transacción.
+- Bloquear la fila del usuario inmediatamente después de iniciar la transacción, antes de consultar clave, recursos y validaciones de negocio. Usar el mismo cliente de `pg`; mantener el bloqueo hasta COMMIT/ROLLBACK. Los checks estructurales de transporte pueden preceder a la transacción; no deben adelantarse allí lecturas de disponibilidad.
+- Procesar una sección crítica por cuenta, sin serializar globalmente cuentas distintas. Todas las operaciones que modifiquen sus recursos deben respetar el protocolo.
+- Persistir y confirmar REJECTED por insuficiencia; recuperarlo aunque después haya fondos. Un nuevo intento de negocio requiere UUID nuevo.
+- Hasta tres reintentos adicionales ante fallos transitorios, conservando UUID y repitiendo la transacción completa tras rollback. No reintentar entradas inválidas, conflictos de parámetros o rechazos de negocio. Un COMMIT de resultado incierto se resuelve recuperando por la misma clave, no asumiendo que falló.
+
+### Análisis de casos límite y consistencia
+
+Los riesgos siguientes son análisis técnico, no fallos observados de una implementación existente.
+
+- **E01 — Dos solicitudes simultáneas con la misma clave:** sin serialización podrían leer ausencia a la vez. Con el protocolo acordado, la segunda espera, luego recupera o informa conflicto. La unicidad es una defensa adicional, no reemplaza comparar parámetros.
+- **E02 — Dos claves distintas gastan el mismo saldo:** ambas satisfacen UNIQUE. La protección es bloquear por usuario y leer recursos después del bloqueo. Este caso impide simplificar eliminando el bloqueo y dejando solo la constraint.
+- **E03 — Snapshot anterior al bloqueo:** una lectura de recursos en el mismo statement que espera el bloqueo puede partir de datos anteriores. **PROPUESTA:** READ COMMITTED, adquisición del bloqueo en un statement y consultas posteriores separadas. No precalcular recursos antes ni asumir que REPEATABLE READ verá automáticamente los inserts de la transacción previa. [Aislamiento PostgreSQL](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-READ-COMMITTED).
+- **E04 — Respuesta perdida o conexión caída durante COMMIT:** la orden puede haberse confirmado. Recuperar con el mismo UUID bajo el protocolo; no generar otra clave, informar rollback seguro ni repetir efectos externos por inferencia. Si la base continúa inaccesible, el resultado sigue incierto. La conexión dañada no debe reutilizarse como si siguiera sana.
+- **E05 — Clave existente con parámetros distintos:** devolver conflicto sin actualizar la orden anterior. `ON CONFLICT DO UPDATE` no debe sobrescribir intención, precio o estado. Comparar campos originales normalizados, no un JSON bruto sensible a orden de propiedades ni únicamente valores derivados.
+- **E06 — Violación de unicidad inesperada:** identificar qué constraint falló; no tratar todo `23505` como reintento idempotente. Si la transacción abortó, hacer rollback y recuperar en una transacción válida respetando el bloqueo. Una constraint de idempotencia no elimina fallos de PK o de otras reglas.
+- **E07 — Filas originales sin UUID:** una migración no puede exigirles un UUID del cliente inexistente. **PROPUESTA:** columnas nuevas anulables para filas históricas y unicidad por usuario/UUID con tratamiento normal de NULL; el API exige UUID y metadatos para toda nueva orden. La nulabilidad permitiría a otro escritor saltarse esa garantía: documentar y validar el protocolo para nuevos escritores; no afirmar que UNIQUE por sí solo exige claves. [Constraints de PostgreSQL](https://www.postgresql.org/docs/18/ddl-constraints.html#DDL-CONSTRAINTS-UNIQUE-CONSTRAINTS).
+- **E08 — Clave igual en cuentas distintas:** son operaciones diferentes por el alcance aprobado. Todas las búsquedas y restricciones deben incluir usuario; no devolver órdenes de otra cuenta por buscar solo UUID.
+- **E09 — Normalización y cambios de contrato:** validar antes de normalizar; conservar modo y valores originales semánticos. No redondear parámetros para hacerlos coincidir. Si cambian las reglas de validación entre versiones, una solicitud antigua podría no llegar a recuperación: versionado/compatibilidad de esos metadatos queda pendiente, sin prometer reproducción HTTP exacta indefinida.
+- **E10 — Orden NEW cancelada posteriormente, confirmado:** recuperar devuelve el estado persistido actual, incluido CANCELLED, conservando identidad y parámetros originales. No recrea la orden, no la reabre ni reserva otra vez. Una nueva intención de operar exige otro UUID y una orden distinta. Contrato de cancelación en F08, sin autorización de implementación.
+- **E11 — Deadlock, timeout o caída antes de COMMIT:** no prometer éxito tras reintentar. **PROPUESTA:** considerar `40001` y `40P01` para reintentar la transacción completa; precisar fallos de conexión, esperas y presupuestos temporales antes de codificar. No reintentar de forma indiscriminada cualquier error SQL. [Reintentos de PostgreSQL](https://www.postgresql.org/docs/18/mvcc-serialization-failure-handling.html).
+- **E12 — Mezcla de clientes o caminos de escritura:** consultar recursos y escribir con clientes distintos rompe la unidad transaccional; no usar `pool.query` para statements de una transacción ya abierta. Los escritores que no respetan el bloqueo pueden romper disponibilidad aunque no dupliquen UUID. [Transacciones con pg](https://node-postgres.com/features/transactions) y [bloqueos por fila](https://www.postgresql.org/docs/18/explicit-locking.html#LOCKING-ROWS).
+- **E13 — UUID nuevo en un reenvío accidental:** es otra operación por acuerdo; el servidor no puede distinguirla de una segunda orden legítima idéntica. El cliente debe conservar la clave desde el primer envío. No deduplicar por ticker, monto o ventana temporal.
+- **E14 — Borrado de orden/metadatos:** al desaparecer la clave se pierde la garantía para futuros reenvíos. Mantener la retención aprobada mientras exista la orden; no introducir purgas o TTL. Borrado y archivado no forman parte del alcance actual.
+
+### Alternativa de simplificación seleccionada y opciones no adoptadas
+
+- **A — CONFIRMADA por el usuario el 2026-10-27:** conservar la semántica y simplificar la representación. UUID tipado, comparación directa de parámetros normalizados almacenados en `orders`, UNIQUE por usuario/UUID y bloqueo por cuenta. Sin hash, caché, cola ni tabla extra. Se conserva la política de reintentos aprobada. JSONB sigue siendo un ejemplo de representación, no un esquema cerrado; READ COMMITTED y demás preguntas residuales continúan pendientes. El índice no elimina los riesgos E02/E12.
+- **B — Menos lógica de recuperación automática en el servidor.** Mantener clave, comparación, persistencia y bloqueo, pero delegar los reenvíos al cliente con el mismo UUID. Reduce código de reintentos y no reduce la protección contra duplicados, pero obliga al cliente a recuperar fallos transitorios y cambia la política aprobada de hasta tres reintentos. Requiere autorización expresa; no se adopta aquí.
+- **C — Duplicado siempre recupera sin comparar parámetros.** Ahorra metadatos, pero una clave reutilizada por error devolvería otra intención como si correspondiera al nuevo pedido. Contradice el conflicto aprobado; no recomendada.
+- Eliminar idempotencia o deduplicar solo en memoria reduce trabajo pero pierde protección tras respuesta perdida/reinicio. Mantener UNIQUE sin bloqueo permite sobreconsumo con UUID distintos. No son alternativas equivalentes al acuerdo actual.
+
+### Criterios de aceptación futuros
+
+- **AC10:** dos envíos concurrentes iguales con misma cuenta y UUID dejan una fila y un solo efecto/reserva; ambos recuperan la misma identidad de orden. No se fijan todavía los códigos HTTP de ambos caminos.
+- **AC11:** misma clave con parámetros estructuralmente válidos pero distintos en instrumento, side, tipo, modo, monto/cantidad o precio LIMIT produce conflicto y deja intacta la orden previa. Una diferencia solo de representación decimal válida normalizada no produce conflicto. Una entrada estructuralmente inválida se trata según AC15 antes de comparar.
+- **AC12:** mismo UUID en cuentas distintas no colisiona. UUID distintos con parámetros iguales en una cuenta se validan como operaciones diferentes.
+- **AC13:** con efectivo 1.000 y dos BUY LIMIT por 700 bajo claves diferentes, solo una queda NEW; la otra queda REJECTED. La reserva total es 700. El ganador depende del bloqueo, no del orden de llegada HTTP. Verificar también insuficiencia de acciones en ventas.
+- **AC14:** perder la respuesta después de COMMIT y reenviar conserva orden, estado y precio; un reinicio no pierde la clave. Si hubo rollback confirmado y no existe orden, reintentar puede procesarla. No afirmar rollback ante COMMIT incierto.
+- **AC15:** un REJECTED recuperado sigue rechazado aunque aumenten recursos. Errores estructurales no generan fila ni reserva; corregirlos permite enviar una solicitud válida con una clave que aún no quedó persistida.
+- **AC16:** la migración futura conserva filas históricas y las nuevas órdenes válidas incluyen clave/metadatos; no hay un intervalo confirmado con una orden sin su identidad idempotente. Diseño concreto pendiente.
+- **AC17:** distintas cuentas pueden progresar en paralelo; los fallos técnicos elegidos respetan límites y repiten transacción completa. Escenarios y resultados temporales dependen de cerrar timeouts y errores reintentables.
+- Estas comprobaciones son especificaciones para futuros tests con PostgreSQL aislado. No existen ni se ejecutaron tests funcionales de estos comportamientos en esta entrega.
+
+## F06 — Búsqueda de instrumentos: análisis de ILIKE (D06)
+
+### Obligación y estado de la propuesta
+
+- **FUENTE — R02:** devolver activos similares a la búsqueda, soportando ticker y/o nombre (consigna, línea 6). La fuente no exige coincidencia por subcadena, ILIKE, corrección ortográfica, rutas ni códigos HTTP concretos.
+- **CONFIRMADO por el usuario:** GET `/instruments?query=...`; excluir ARS/MONEDA de la búsqueda. En el catálogo actual, el universo buscable es `ACCIONES`. ARS sigue participando como efectivo en el portfolio. Esta delimitación es una decisión del proyecto; la consigna no expresa literalmente un filtro por tipo en la búsqueda.
+- **CONFIRMADO al aprobar las secuencias:** un texto obligatorio, trim de espacios exteriores, subcadena literal con ILIKE en ticker O nombre sin distinguir mayúsculas, HTTP 400 para entrada ausente/vacía/no textual, HTTP 200 con array de coincidencias o `[]`, orden por ticker e id. Coincidir en ambos campos no duplica una fila; escapar !, % y _ y parametrizar la consulta.
+- Dictamen técnico: adecuada para esta interpretación de R02, con las adaptaciones de stack/esquema y preguntas indicadas abajo. No equivale a búsqueda difusa: `appel` no se transforma en `apple`. AAPL/Apple son ejemplos hipotéticos y no figuran en el seed; para escenarios del proyecto usar PAMP/Pampa.
+
+### Adaptación al proyecto
+
+- **CONFIRMADO previamente:** NestJS con Express y `pg`, arquitectura hexagonal y modelos propios. El ejemplo TypeORM es ilustrativo: `typeorm` y `@nestjs/typeorm` no están instalados ni aprobados. No introducir un segundo mecanismo de acceso a datos para esta consulta.
+- La tabla real es `instruments`; las columnas son `id`, `ticker`, `name`, `type`. `nombre` no existe. Si se eligiera ese nombre en la API, necesitaría un mapeo explícito, no un cambio silencioso del esquema.
+- El adapter HTTP valida la forma de la entrada y traduce errores a HTTP. El CDU y su puerto de salida trabajan con texto literal normalizado y modelos propios, sin Nest ni operadores SQL. El adapter PostgreSQL arma el patrón, aplica escape, ejecuta con parámetros y mapea filas. No devolver entidades ORM ni introducir `BadRequestException` en el CDU.
+- **CONFIRMADO en la coordinación SDD del 2026-10-27:** respuesta como array de objetos con `id`, `ticker` y `name`, sin `type`; conservar `null` si ticker o name son nulos en origen. No añadir precios ni un join con marketdata: una acción no debe perderse por carecer de cotización.
+- Esta consulta no crea órdenes, reservas o movimientos; no necesita la clave idempotente ni el bloqueo de cuenta del envío de órdenes.
+
+### Semántica de consulta y escape
+
+Fragmento ilustrativo del flujo aprobado, ajustado al universo confirmado; no es implementación ni fija los detalles de contrato todavía no definidos:
+
+```sql
+SELECT id, ticker, name
+FROM instruments
+WHERE type = 'ACCIONES'
+  AND (ticker ILIKE $1 ESCAPE '!' OR name ILIKE $1 ESCAPE '!')
+ORDER BY ticker ASC, id ASC;
+```
+
+- El único valor de parámetro se construye con `%` exterior, texto escapado y `%` exterior. En una sola pasada, reemplazar cada `!`, `%` y `_` del texto por el mismo carácter precedido de `!`: `!` pasa a `!!`, `%` a `!%` y `_` a `!_`. No volver a escapar los caracteres añadidos.
+- Ejemplos de patrón: texto `100%` produce `%100!%%`; texto `A_B` produce `%A!_B%`. El usuario busca esos caracteres literales, no introduce comodines. El escape se realiza una vez sobre el texto ya recibido/decodificado por HTTP.
+- Pasar el patrón separado del SQL con `$1` y los valores de `pg`; nunca interpolar el texto del usuario en la consulta. Parametrizar evita que se interprete como SQL; escapar comodines mantiene la semántica de búsqueda literal. Son responsabilidades diferentes. [Consultas parametrizadas de pg](https://node-postgres.com/features/queries).
+- ILIKE ignora diferencias de mayúsculas según la configuración regional activa; no promete eliminación de tildes, normalización Unicode ni corrección de escritura. PostgreSQL 18 no admite collations no deterministas en ILIKE; verificar la configuración efectiva antes de prometer esos resultados. [Matching y escape de PostgreSQL](https://www.postgresql.org/docs/18/functions-matching.html#FUNCTIONS-LIKE).
+- OR sobre una fila no la duplica: no hace falta UNION ni DISTINCT para resolver coincidencia en ambos campos. Mantener los paréntesis para que el filtro de tipo afecte a ticker y name.
+
+### Casos límite y decisiones pendientes
+
+- **Ruta y universo cerrados:** GET `/instruments?query=...`, con acciones del catálogo actual y sin ARS/MONEDA. No se adopta `/activos?q=...`. La ausencia de cotización no es un filtro de búsqueda; el tratamiento de futuros tipos de instrumentos queda fuera del catálogo actual.
+- **Entradas — CONFIRMADO en la coordinación SDD:** exigir un único valor textual; rechazar listas, objetos y múltiples valores de query con 400, sin seleccionar uno ni concatenarlos. Verificar el parsing HTTP real con Express, incluidas las formas de parámetros repetidos y estructurados. Un valor como `123` recibido como texto sigue siendo una búsqueda textual válida.
+- **Longitud — CONFIRMADO en la coordinación SDD:** máximo 255 caracteres Unicode después de trim; rechazar el exceso con 400, sin truncar. Es una decisión explícita del proyecto, no una regla deducida de la columna SQL. No imponer búsqueda mínima de tres caracteres.
+- **Errores — CONFIRMADO para este endpoint:** entrada inválida → 400 con mensaje genérico; fallo técnico → 500 con mensaje genérico y diagnóstico interno sanitizado. No convertir un fallo de base en HTTP 200 con `[]`; ese resultado significa consulta ejecutada sin coincidencias. Esta aprobación no cierra códigos/cuerpos técnicos de otros endpoints ni fija un texto o envoltura común para toda la API.
+- **Datos nulos y orden:** el DDL admite ticker/name nulos. Si un campo es nulo, el otro puede coincidir; si ambos son nulos no hay coincidencia con un texto no vacío. El id desempata tickers iguales; orden lingüístico depende de collation, no se promete uno distinto.
+- **Rendimiento:** el seed tiene 66 instrumentos, sin evidencia de una necesidad de índices adicionales. No hay benchmark ni objetivo de latencia. El patrón `%texto%` no obtiene la optimización de búsqueda por prefijo de un B-tree convencional. Si cambia la escala, evaluar un índice con pg_trgm mediante medición; eso puede acelerar ILIKE sin convertir el endpoint en búsqueda difusa. No se añade extensión o índice en esta etapa. [Índices pg_trgm](https://www.postgresql.org/docs/18/pgtrgm.html#PGTRGM-INDEX).
+
+### Criterios de aceptación propuestos, no ejecutados
+
+- **AC18:** buscar ` pAmP ` equivale a `PAMP` y encuentra el instrumento PAMP/Pampa; buscar `holding` lo encuentra por nombre. No se exige un único resultado si otros instrumentos también coinciden.
+- **AC19:** con un fixture aislado donde el mismo instrumento coincide por ticker y nombre, devolver una sola fila. Ordenar por ticker y, ante empate, por id.
+- **AC20:** ausencia, texto vacío, solo espacios, listas, objetos y query repetida devuelven 400 con mensaje genérico y sin consultar DB. Aceptar hasta 255 caracteres Unicode tras trim y rechazar 256 sin truncar; comprobar también caracteres que ocupen más de una unidad UTF-16. Sin coincidencias devuelve 200 y `[]`.
+- **AC21:** en fixtures aislados, `%`, `_` y `!` se buscan literalmente; una comilla o texto parecido a SQL no cambia la consulta ni ejecuta instrucciones. Los fixtures no modifican el seed de desarrollo.
+- **AC22:** con un fixture que solo contiene Apple, `appel` no lo encuentra; no se anuncia tolerancia a errores ni a tildes. Verificar case-insensitivity con la configuración regional usada por PostgreSQL.
+- **AC23 — alcance confirmado:** una acción sin cotización sigue siendo encontrable. Las búsquedas por ticker `ARS` o nombre `PESOS` no devuelven el instrumento ARS/MONEDA. Tampoco aparece una fila MONEDA cuyo nombre coincida aunque su ticker no coincida; el filtro de tipo afecta a ambos lados del OR. Esto no excluye otras acciones que puedan contener esos textos.
+- **AC24:** devolver únicamente `id`, `ticker` y `name`, preservando nulos de origen. Un fallo técnico devuelve 500 con mensaje genérico y diagnóstico interno sanitizado, sin datos internos en la respuesta; nunca una búsqueda exitosa vacía. Ninguna búsqueda modifica órdenes, efectivo, tenencia o reservas.
+
+## F07 — Cotizaciones incompletas y errores públicos (D07)
+
+### Fuente, datos iniciales y selección
+
+- **FUENTE — R05/R12:** MARKET utiliza el último `close`; el retorno diario utiliza `close` y `previousClose` (consigna, líneas 30–31). La fuente no define valores iniciales por defecto ni la respuesta ante datos ausentes.
+- **EVIDENCIA estática:** el DDL de marketdata (SQL, líneas 29–39) admite nulos y no tiene unicidad por instrumento/fecha. El seed (líneas 122–260) contiene 126 cotizaciones: 63 acciones por fecha, 2023-07-13 y 2023-07-14, sin duplicados de instrumento/fecha. Todos sus `close` y `previousClose` son positivos y no nulos. Los nulos observados corresponden a otros campos. Los instrumentos 3 y 10 no tienen cotizaciones; ARS tampoco las necesita para contabilizar pesos.
+- **Al iniciar con ese seed:** se leen los valores almacenados, sujetos a la escala aceptada en F04; no se inicializan precios en cero o uno. Por ejemplo, el instrumento 12 tiene `close = 20.50` y `previousClose = 20.50` en ambas fechas (SQL, líneas 123 y 193). No hace falta tener en la tabla el día anterior si la propia fila ya trae `previousClose`.
+- **CONFIRMADO por el usuario:** por instrumento, tomar la mayor `date` no nula y, ante igualdad, el mayor `id`; si el close de esa fila es inválido, fallar sin sustituirlo por un precio anterior. Un empate significa dos filas del mismo instrumento con la misma fecha, no dos instrumentos con igual precio. El mayor id solo decide de forma estable: no acredita cronología de mercado porque falta hora intradiaria. No cambiar el esquema ni depurar datos en esta etapa.
+- Excluir fechas nulas de la selección temporal confirmada; si no hay fecha utilizable, tratarlo como ausencia de cotización. No usar `ORDER BY date DESC` sin considerar nulos: PostgreSQL los coloca primero por defecto en orden descendente. [Orden y nulos de PostgreSQL](https://www.postgresql.org/docs/18/queries-order.html).
+- Seleccionar primero la fila y después validar su precio. **PROPUESTA de validez:** exigir `close` decimal finito y positivo. La prohibición de reemplazar el último precio inválido por uno anterior ya está confirmada. No usar máximo precio, fecha de orden, precio de compra ni precio externo como sustituto. No introducir un umbral de antigüedad: el seed es histórico y la consigna pide el último disponible.
+
+### Cálculos y ausencia de datos
+
+- **PROPUESTA de fórmula explícita para revisión:** retorno diario porcentual = `100 × (close − previousClose) / previousClose`, con ambos valores finitos y positivos. Con 110 y 100 resulta 10%; con 100 y 100, 0%. Se usan las dos columnas de la misma fila seleccionada. Esta fórmula no reemplaza el rendimiento total de F01; precisión de división y presentación siguen pendientes en Q03.
+- **CONFIRMADO:** si falta una base válida de previousClose, el retorno diario es `null`, sin sustituirlo por cero, por `close` o por otra fila. Con `close` válido se mantienen valoración, rendimiento total calculable y ejecución MARKET; esos cálculos no dependen de `previousClose`. Los chequeos concretos de validez se proponen arriba.
+- **Semántica confirmada:** `null` representa un porcentaje no calculable; `[]` representa una colección sin elementos. No devolver `positions: []` por faltar previousClose: ocultaría posiciones existentes. Tampoco usar un array como valor del porcentaje. Ejemplo con nombres de campos todavía propuestos: `positions: [{ instrumentId: 12, dailyReturnPercent: null, ... }]`; el cierre de F01 define cuándo una cuenta no tiene posiciones que mostrar.
+- **PROPUESTA ante close ausente/inválido:** impedir una nueva ejecución MARKET y su conversión desde amount; devolver error público genérico y registrar causa interna. No crear orden ni reserva para ese fallo técnico/de datos. Esto requiere confirmar la política de persistencia: no equivale al rechazo por insuficiencia, que sí debe persistir REJECTED. Sin una fila confirmada, el UUID no queda consumido y un reenvío podrá procesarse si se resuelve la causa.
+- Recuperar una orden por UUID ya persistido antes de exigir cotización nueva, según F05. Un fallo posterior del mercado no debe impedir la recuperación idempotente ni provocar otra ejecución.
+- **CONFIRMADO para portfolio:** si falta close necesario para valorar una posición, fallar la consulta completa con error genérico; no devolver un total parcial como total de cuenta ni inventar valor cero. Si solo falta previousClose, devolver los demás resultados y retorno diario `null`, registrando la causa solo internamente. D03 y las posiciones de cantidad cero conservan sus decisiones pendientes propias.
+- Una LIMIT usa su precio explícito para cantidad y reserva; no añadir dependencia de marketdata para enviarla. Cancelar tampoco necesita cotización. No exigir cotizaciones de instrumentos que no intervienen en el cálculo solicitado; ARS es efectivo, no una posición accionaria valorada con marketdata.
+
+### Política de errores
+
+- **CONFIRMADO por el usuario:** al fallar, responder al cliente con un mensaje genérico y registrar el mensaje/diagnóstico o traza en el servidor. No exponer SQL, nombres de tablas/columnas, excepciones del driver, trazas ni causas internas de cotizaciones. La propuesta anterior de explicar esas causas al cliente queda reemplazada.
+- **PROPUESTA de mensaje común:** «No se pudo completar la operación. Inténtalo más tarde». La indicación no garantiza que repetir arregle una cotización ausente. En envío de órdenes, conservar el mismo UUID al reintentar; un error de comunicación puede ocurrir después de COMMIT.
+- **PROPUESTA HTTP:** 503 para indisponibilidad temporal y 500 para una condición interna/de datos que impida completar la operación. No clasificar toda ausencia de precio como caída temporal ni inventar un Retry-After. Códigos/cuerpo de errores técnicos y los errores de negocio aún no aprobados de F05/F08 quedan por confirmar; F08 ya fija 409 para FILLED/REJECTED. [Semántica HTTP de errores del servidor](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.6).
+- El adapter HTTP traduce errores de aplicación a respuestas sanitizadas; el CDU no devuelve trazas ni depende de HTTP. Registrar contexto técnico mínimo y causa, sin volcar requests, credenciales o datos personales; sanitizar mensajes del driver antes de registrarlos. No hace falta fabricar una excepción con stack para cada dato ausente. [Manejo de errores OWASP](https://owasp.org/www-community/Improper_Error_Handling) y [datos excluidos de logs](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude).
+- El diagrama propone `warnings` y `dailyReturnPercents`, pero sus campos son borrador. No se adopta un warning público que revele la causa interna. El nombre final del campo sigue pendiente; su nulabilidad por ausencia de base diaria y el error completo cuando falta close necesario ya están confirmados.
+
+### Criterios de aceptación propuestos, no ejecutados
+
+- **AC25 — selección confirmada:** dos fechas eligen la mayor; dos filas con igual instrumento/fecha eligen mayor id; una fecha nula no gana. Si la fila elegida tiene close inválido, no se retrocede a otra fila. Fixtures aislados; el seed no contiene esos empates.
+- **AC26:** close 110 y previousClose 100 producen retorno diario 10%. PreviousClose nulo/cero con close válido produce retorno diario null, conserva valoración y permite MARKET con recursos suficientes; nunca produce NaN/Infinity ni un falso 0%.
+- **AC27:** sin close utilizable, una nueva MARKET no se ejecuta y devuelve error genérico; un portfolio que lo necesita falla sin anunciar un total completo. Una LIMIT válida y una cancelación no fallan únicamente por esa ausencia. La propuesta de no crear fila ni consumir UUID para una MARKET no procesable sigue pendiente de confirmación.
+- **AC28:** fallo de base o de cotización registra diagnóstico interno sanitizado; respuesta pública no contiene detalles de esquema ni traza. Un reenvío de orden ya persistida mantiene la garantía de F05 aunque ya no haya cotización. Una cuenta compuesta solo por efectivo no necesita marketdata.
+
+## F08 — Cancelación independiente y transferencias existentes (D08)
+
+### Fuente y alcance confirmado
+
+- **FUENTE — R08/R09/R10:** CANCELLED describe la cancelación por el usuario; solo se cancelan órdenes NEW. Contabilizar movimientos pertinentes existentes, incluido efectivo ARS (consigna, líneas 21 y 24–29). La consigna sí establece cancelación funcional; no prescribe verbo, ruta o cuerpo HTTP.
+- **CONFIRMADO por el usuario:** incluir el diseño de un endpoint para cancelar órdenes como CDU independiente. Deja de estar pendiente decidir si se incluye. Aplicar las reservas aprobadas de D02: al salir de NEW, liberar su reserva, sin revertir una ejecución inexistente.
+- El diagrama vigente contiene el High Level Design y las cuatro secuencias aprobadas, incluida cancelación. El envío selecciona usuario por ruta; el antiguo POST /orders con userId en body no es el contrato vigente. La envoltura `order` sigue como propuesta de payload.
+
+### Contrato confirmado y detalles pendientes
+
+- **CONFIRMADO:** POST `/users/:userId/orders/:orderId/cancel`, sin body ni nuevo `Idempotency-Key`. No borrar la orden ni exponer una modificación arbitraria de status. La secuencia aprobada confirma 400 para entrada inválida; la validación concreta de identificadores enteros positivos compatibles con el esquema sigue como propuesta de detalle.
+- Éxito → 200 con `{ "order": { "id": <orderId>, "status": "CANCELLED" } }`. Proyección mínima propuesta; no implica aprobar el resto de campos del borrador de envío.
+- **CONFIRMADO al aprobar la secuencia:** orden inexistente o no perteneciente al usuario seleccionado → mismo 404 genérico, sin revelar otra cuenta. **PROPUESTA restante:** usar también 404 para usuario inexistente. FILLED/REJECTED → 409, sin modificar estado ni recursos. Mensajes/cuerpos concretos siguen por definir; errores técnicos según F07.
+- **CONFIRMADO:** NEW → CANCELLED con 200. Para una orden que ya está CANCELLED, devolver 200 con el mismo resultado y ningún efecto adicional. No constituye otra transición: la regla solo permite cambiar a CANCELLED desde NEW. La alternativa de devolver 409 por repetición no se adopta.
+- **Interacción confirmada con D05:** reenviar la creación con el UUID original recupera la misma orden y su estado actual, incluido CANCELLED; nunca vuelve a NEW ni reserva de nuevo. Conserva parámetros originales para comparar. Esto ofrece idempotencia de efectos/identidad, no reproducción exacta de la respuesta inicial; no se añade almacenamiento de una respuesta original separada.
+- **Semántica confirmada:** no se reabre una orden cancelada. El mismo UUID identifica un reenvío técnico, por ejemplo por pérdida de respuesta, timeout o duplicación tardía de una solicitud de creación. Si entretanto la orden quedó CANCELLED, recuperarla solo informa ese estado, sin modificarla. Una nueva intención de operar después de cancelar exige otro UUID y una orden distinta, conforme a D05.
+- La selección de usuario no autentica a quien llama. Comprobar pertenencia evita mezclar cuentas durante esta operación, pero no sustituye autenticación, que sigue fuera del alcance acordado.
+
+### Contrato del CDU y consistencia
+
+- **PROPUESTA de puerto de entrada:** `CancelOrderUseCase`, entrada `{ userId, orderId }`, retorno asíncrono `Promise<CancelOrderOutput>` con `{ orderId, status: CANCELLED }`; errores de aplicación tipados para entrada inválida, recurso no encontrado, estado incompatible o fallo técnico. Son contratos documentales; no se crean interfaces de código en esta etapa.
+- Controller/adapter de cancelación → puerto de entrada propio → implementación propia. Compartir puertos de transacción y repositorio de órdenes, sin invocar el CDU de envío o el de portfolio. El repositorio busca por usuario e id, obtiene el estado y realiza la transición condicional; el CDU decide el comportamiento, el adapter implementa SQL y mapea datos. Composición mediante tokens según arquitectura aprobada.
+- Aplicar el protocolo de cuenta de F05: iniciar transacción, bloquear usuario, leer la orden después de adquirir el bloqueo, verificar pertenencia/estado, cambiar NEW → CANCELLED condicionalmente y confirmar. Mismo cliente pg para todas las lecturas/escrituras. La respuesta exitosa se emite después de COMMIT. No adquirir primero el bloqueo de orden y luego el de usuario por un camino distinto.
+- **Efectos:** cancelar BUY NEW elimina `size × price` de pesos reservados; cancelar SELL NEW elimina `size` de acciones reservadas. No cambia efectivo contable, tenencia ejecutada, costo ni valor de cuenta por sí mismo. No crear CASH_IN/CASH_OUT para compensar, no borrar filas y no alterar fecha/precio/cantidad ni metadatos originales del envío.
+- Con reservas derivadas del estado, el cambio de status basta para dejar de contar la reserva. Si se decide persistir reservas aparte, su liberación debe pertenecer a la misma transacción; no se introduce aquí una tabla adicional. Una lectura posterior al commit observa el recurso liberado.
+- **Carreras:** dos cancelaciones de la misma orden liberan una sola vez; cancelación frente a nueva orden en la misma cuenta se serializa. Si la nueva orden obtiene primero el bloqueo, valida con la reserva todavía vigente y puede quedar REJECTED; cancelar después no revierte ese rechazo. Si cancela primero, la nueva orden puede usar los recursos liberados. No prometer orden FIFO.
+- **Fallo o COMMIT incierto:** con el no-op exitoso confirmado, repetir cancelación sobre el mismo userId/orderId recupera CANCELLED o realiza la única transición pendiente, sin requerir otro UUID ni cotización. Si no se puede leer la base, devolver error genérico sin afirmar que la cancelación no ocurrió. Los límites de reintento técnico y timeouts siguen pendientes; no añadir un bucle ilimitado.
+
+### Transferencias y aceptación futura
+
+- Contabilizar los CASH_IN/CASH_OUT FILLED existentes una sola vez en el efectivo, como ya exige F01/R09/R10; no tratarlos como posiciones accionarias ni como reservas. El seed tiene entrada de 1.000.000 y salida de 100.000 pesos (SQL, líneas 263 y 270): contribución neta de transferencias 900.000 antes de compras/ventas. No es el efectivo final de la cuenta.
+- No se diseña API para crear transferencias ni un flujo de reversión. El endpoint de cancelación actúa sobre órdenes de compra/venta; no convierte movimientos de efectivo históricos FILLED en cancelables.
+- **AC29:** con efectivo contable 1.000 y una BUY NEW de 3 a 100, cancelar deja reserva 0 y disponible 1.000 frente a 700 antes; efectivo contable y tenencia permanecen iguales. Con 10 acciones y SELL NEW de 6, disponibles pasan de 4 a 10 sin cambiar tenencia ejecutada.
+- **AC30:** FILLED/REJECTED no cambian y devuelven 409; CANCELLED devuelve 200 sin efectos. Orden de otra cuenta y orden inexistente producen el mismo 404 genérico, según secuencia aprobada; ningún caso modifica datos ajenos. Entrada inválida devuelve 400.
+- **AC31:** cancelaciones concurrentes, respuesta perdida y reenvío no duplican liberación. Reenvío de creación con UUID original devuelve la misma orden CANCELLED y no crea otra reserva, según semántica confirmada. Un UUID nuevo identifica una nueva orden y vuelve a validar sus condiciones, sin reutilizar ni reabrir la anterior.
+- **AC32:** envío y cancelación concurrentes respetan el orden efectivo del bloqueo y los recursos vigentes; rollback no deja cancelación parcial. Una cuenta distinta puede progresar en paralelo. Preservar el registro de la orden y sus metadatos originales.
+- Estos criterios describen pruebas futuras; no hay CDU ni endpoint de cancelación implementados y no se ejecutaron pruebas de aplicación en esta revisión.
+
+## Preguntas abiertas y límite de esta entrega
+
+- **Q01 — D01:** ¿cómo representar posiciones con cantidad cero y denominadores inválidos? ¿Se aprueba `id` como desempate temporal? D03 debe investigarse antes de fijar la respuesta para la tenencia negativa.
+- **Q02 — D04:** ¿se aprueban strings decimales sin exponente y el máximo de dos dígitos escritos, incluso si son ceros finales? Amount con máximo dos decimales y comparación normalizada ya están aprobados; no se vuelven a preguntar.
+- **Q03 — D01/D04:** falta fijar criterio de redondeo de presentación y precisión de divisiones. El follow-up de riesgos no autoriza escoger silenciosamente valores de configuración.
+- **Q04 — D05:** A, rutas y códigos 201/200/409 ya confirmados. Cerrar esquema concreto de metadatos, payloads, errores HTTP restantes, compatibilidad de reenvíos, aislamiento y límites/reintentos sin reabrir esos acuerdos.
+- **Q05 — D06, CERRADA en la coordinación SDD del 2026-10-27:** se confirman array con `id`/`ticker`/`name` conservando nulos, query única sin listas/objetos/repeticiones, máximo 255 caracteres Unicode tras trim sin truncar, entrada inválida 400 y fallo técnico 500 con mensajes genéricos y diagnóstico sanitizado. Se mantienen ruta, universo y flujo previamente aprobados. No hay implementación autorizada por esta aprobación documental; detalles de mensajes/envolturas comunes de otros endpoints siguen abiertos.
+- **Q06 — D07:** confirmados fecha/id sin retroceder, errores genéricos, retorno diario null sin base válida y error completo de portfolio sin close necesario. Quedan fórmula/validaciones concretas de precios, persistencia de MARKET no procesable, nombre del campo diario y códigos/cuerpo técnico; no reabrir la distinción null/array ni confundir datos ausentes con indisponibilidad temporal.
+- **Q07 — D08:** confirmados endpoint independiente, ruta/método sin body ni clave nueva, 200 al cancelar o repetir sin efectos, 409 para FILLED/REJECTED, 400 para entrada inválida, mismo 404 para orden inexistente/ajena y recuperación del estado actual al reenviar creación. Quedan proyección de respuesta, validaciones concretas, tratamiento de usuario inexistente y mensajes. No reabrir las decisiones confirmadas ni el alcance de transferencias.
+- Esta especificación no declara terminados todos los features ni habilita implementación. D03 y las demás preguntas residuales siguen abiertas; cerrar Q05 no aprueba las propuestas restantes de D07–D08 ni implementa la búsqueda.
