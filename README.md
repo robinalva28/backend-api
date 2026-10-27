@@ -7,6 +7,7 @@ Objetivo: preparar una API REST de portfolio, búsqueda de activos y envío de �
 - [Consigna original](backend-challenge.md) y [base de datos provista](database.sql).
 - [Requisitos y criterios de aceptación](docs/requisitos.md).
 - [Plan, decisiones, pendientes y flujo de entrega](docs/plan.md).
+- [Especificación SDD parcial](docs/backend-features.spec).
 - [Reglas de trabajo y registro de sesiones](AGENTS.md).
 
 Los Markdown de otros challenges se conservan sin cambios por instrucción del usuario. El alcance de este trabajo se limita al backend.
@@ -44,3 +45,7 @@ PORT=3002 npm start
 Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales. Vitest y Supertest están instalados; todavía no existe una suite de pruebas del challenge. La comprobación de arranque no equivale a validación funcional de la aplicación.
 
 La verificación Docker de esta sesión utilizó el perfil existente de Colima y plugins temporales Compose 5.6.1/Buildx 0.38.1, sin instalarlos globalmente ni cambiar el contexto activo. Con Colima, se puede elegir el motor por comando con `DOCKER_CONTEXT=colima`; los plugins deben estar disponibles en el CLI para usar los comandos anteriores. Resultados de validación en el plan.
+
+## Follow-ups
+
+- Evaluar riesgos del redondeo monetario y costo de preservar mayor precisión histórica y futura; por ahora se mantiene escala 2. [Detalle](docs/backend-features.spec#evidencia-sobre-la-precisión-histórica-y-costo-de-preservarla).
