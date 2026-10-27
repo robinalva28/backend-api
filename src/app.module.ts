@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { InstrumentsModule } from './instruments/instruments.module.js';
 
 @Module({
   imports: [
@@ -9,12 +10,13 @@ import { ConfigModule } from '@nestjs/config';
         const port = Number(environment['PORT'] ?? 3000);
 
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
-          throw new Error('PORT debe ser un entero entre 1 y 65535.');
+          throw new Error('PORT must be an integer between 1 and 65535.');
         }
 
         return { ...environment, PORT: port };
       },
     }),
+    InstrumentsModule,
   ],
 })
 export class AppModule {}

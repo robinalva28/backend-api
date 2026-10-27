@@ -16,6 +16,7 @@ La consigna backend define el alcance funcional; los otros challenges no aportan
 - Componer dependencias en módulos con tokens centralizados. Usar `useExisting` para alias de providers existentes o `useFactory` para construir CDU independientes de Nest; evitar registrar dos instancias de una misma implementación por accidente.
 - Compartir el cliente de base a través del puerto transaccional para operaciones que deban ser atómicas. No convertir valores monetarios a coma flotante binaria para calcular importes.
 - Usar Vitest, Supertest y `@nestjs/testing`; las pruebas funcionales de órdenes deben utilizar PostgreSQL real aislado del estado de desarrollo. El SQL provisto se conserva como fuente y se monta solo para lectura durante la inicialización.
+- Mantener pruebas unitarias aisladas de servicios/CDU, adapters de entrada y salida y persistencia, sin PostgreSQL, red ni aplicación HTTP real. Verificar contratos de puertos mediante consumidores e implementaciones tipados; las interfaces sin lógica no requieren pruebas de ejecución vacías. Complementar las unitarias con integración PostgreSQL y pruebas HTTP para las garantías que dependan de esas tecnologías.
 - Ejecutar localmente con Docker Compose. Consultar README para comandos reales y el plan para pendientes funcionales; la infraestructura no resuelve automáticamente esas reglas.
 
 ## Preservación y decisiones

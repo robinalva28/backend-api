@@ -10,7 +10,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/main.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:http": "vitest run --config vitest.http.config.ts",
+    "test:typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",
