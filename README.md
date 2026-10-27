@@ -8,7 +8,6 @@ Objetivo: preparar una API REST de portfolio, búsqueda de activos y envío de �
 - [Requisitos y criterios de aceptación](docs/requisitos.md).
 - [Plan, decisiones, pendientes y flujo de entrega](docs/plan.md).
 - [Reglas de trabajo y registro de sesiones](AGENTS.md).
-- [Registro de esta sesión](ailogs/2026-10-24-1403-preimplementacion-backend.md).
 
 Los Markdown de otros challenges se conservan sin cambios por instrucción del usuario. El alcance de este trabajo se limita al backend.
 
