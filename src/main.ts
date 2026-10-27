@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import {
@@ -7,19 +6,14 @@ import {
   type NestExpressApplication,
 } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
+import { configureHttpApplication } from './bootstrap/configure-http.js';
 
 const app = await NestFactory.create<NestExpressApplication>(
   AppModule,
   new ExpressAdapter(),
 );
 
-app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }),
-);
+configureHttpApplication(app);
 app.enableShutdownHooks();
 
 const config = app.get(ConfigService);
