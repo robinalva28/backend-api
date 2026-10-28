@@ -36,6 +36,19 @@ describe('sanitizeDiagnostic', () => {
     expect(output).not.toContain('request-123');
   });
 
+  it('recognizes the account transaction error name without exposing its message', () => {
+    const error = Object.assign(new Error('password=secret-value'), {
+      name: 'AccountTransactionError',
+    });
+
+    const output = sanitizeDiagnostic(error, 'account-transaction');
+
+    expect(output).toContain(
+      'AccountTransactionError: error message redacted',
+    );
+    expect(output).not.toContain('secret-value');
+  });
+
   it('maps known SQLSTATE codes and rejects invalid metadata', () => {
     const known = Object.assign(new Error('duplicate value'), {
       name: 'QueryError',
