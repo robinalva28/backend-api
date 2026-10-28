@@ -4,11 +4,15 @@ Este documento concentra el estado, decisiones y planificación. Las propuestas 
 
 ## Etapa vigente y restricciones
 
-Revisión final de B01 del 2026-10-27: B01-R1 resuelve los pendientes de diagnóstico y unitarias por capa. La revisión independiente confirmó 53 pruebas del grupo unitario sin base activa y 99 pruebas de la suite completa (53 unitarias, 15 de integración PostgreSQL y 31 HTTP), con Node 24.22.1. B01 está aceptado para el único commit local autorizado por el usuario. Esa autorización se limita a B01 y no habilita otros commits ni publicación. El siguiente entregable es el prompt de B02, todavía sin implementación.
+B02/B02-R1 aceptados tras revisión independiente finalizada el 2026-10-28: se comprobó la exactitud de los acumulados y la conservación de la configuración decimal global. La suite completa pasó 126 pruebas (75 unitarias, 20 de integración PostgreSQL y 31 HTTP) con Node 24.22.1, incluida la regresión de cinco reservas máximas con resultado exacto. El usuario autorizó un único commit local de B02/B02-R1 y continuar con el prompt B03; no autorizó publicar implementación ni commits adicionales. B01 ya está versionado localmente en `a39a9dc`.
 
-El usuario aprobó los puntos de arquitectura y solicitó incorporarlos al plan, crear Dockerfile y Compose, usar Express y fijar versiones estables actuales de PostgreSQL, pg y las demás dependencias. La base técnica y su arranque local están preparados. La revisión del 2026-10-27 organiza una [especificación SDD parcial](backend-features.spec) para D01 y D03–D08, con alternativa A de D05 confirmada. Incluye el análisis ILIKE de D06, errores públicos genéricos de D07 y diseño de cancelación independiente solicitado en D08. El 2026-10-27 se implementó y validó B01 — búsqueda de instrumentos de extremo a extremo, con pg y PostgreSQL de pruebas aislado—; portfolio, órdenes y cancelación siguen sin implementar. No se hizo commit, push, PR ni merge. Permanecen preguntas de contrato y propuestas sin aprobar para los demás comportamientos.
+El usuario canceló la propuesta de ramas separadas y PRs. Después autorizó únicamente publicar una base mínima en `origin/main`: se creó `main` sobre el commit original `abae77016b4e07e97161a9567239dcde5c0c00e1` y se publicó esa referencia en `backend-cocos`, sin commits nuevos ni contenido de B01/B02. Se verificó el hash remoto. La rama activa y los cambios pendientes de B02 se conservaron; no se abrieron PRs ni se cambió la visibilidad.
 
-Resolver los casos residuales de D01/D04/D05, la investigación D03 y los contratos D07–D08 antes de implementar sus comportamientos afectados. D06/Q05 está implementado y validado en B01. D02 y las reglas aceptadas de D01/D04/D05 están confirmadas abajo; no se presentan propuestas técnicas del spec como aprobadas. Conservar el SQL original, los otros Markdown y cualquier trabajo existente. La autorización vigente incluye los commits locales de documentación y análisis delimitados en la sección de versionado; no habilita implementación, push, PR o merges.
+Implementación de B02 del 2026-10-27: base interna de efectivo contable, tenencias ejecutadas, reservas NEW y recursos disponibles, con puerto de lectura y adapter pg, implementada y validada sin endpoints. B02-R1 corrigió la exactitud de los acumulados; la revisión independiente se completó el 2026-10-28 con 126 pruebas aprobadas. La entrega queda delimitada al único commit local autorizado el 2026-10-28, sin push, PR ni merge.
+
+El usuario aprobó los puntos de arquitectura y solicitó incorporarlos al plan, crear Dockerfile y Compose, usar Express y fijar versiones estables actuales de PostgreSQL, pg y las demás dependencias. La base técnica y su arranque local están preparados. La revisión del 2026-10-27 organiza una [especificación SDD parcial](backend-features.spec) para D01 y D03–D08, con alternativa A de D05 confirmada. Incluye el análisis ILIKE de D06, errores públicos genéricos de D07 y diseño de cancelación independiente solicitado en D08. El 2026-10-27 se implementó y validó B01 — búsqueda de instrumentos de extremo a extremo, con pg y PostgreSQL de pruebas aislado— y B02 —cálculo interno de recursos de cuenta, sin endpoints—. Portfolio, envío y cancelación de órdenes siguen sin implementar. No se hizo commit, push, PR ni merge de B02. Permanecen preguntas de contrato y propuestas sin aprobar para los demás comportamientos.
+
+Resolver los casos residuales de D01/D04/D05, la investigación D03 y los contratos D07–D08 antes de implementar sus comportamientos afectados. D06/Q05 está implementado y validado en B01; B02 implementó la base interna de recursos sin cerrar D03 ni los contratos públicos. D02 y las reglas aceptadas de D01/D04/D05 están confirmadas abajo; no se presentan propuestas técnicas del spec como aprobadas. Conservar el SQL original, los otros Markdown y cualquier trabajo existente. El usuario autorizó un único commit de B02/B02-R1; B03 se prepara como prompt para el modelo externo, sin implementación directa por el coordinador ni autorización de commit o publicación de B03.
 
 ## Estado verificado y decisiones confirmadas
 
@@ -135,18 +139,20 @@ B01/D06 ya no figura en esta tabla: fue implementado y validado; el detalle est�
 
 ## Tareas futuras y dependencias
 
-La preparación inicial está versionada y la base técnica de T02 está validada. Stack, arquitectura, idempotencia, concurrencia y reservas D02 están definidos; D01/D04/D05 tienen reglas aceptadas y preguntas residuales en el spec. D06/Q05 está cerrado e implementado en B01; D03 y los contratos residuales de D07–D08 siguen abiertos. El diseño de cancelación ya está incluido. T03, T05, T06 y la parte de portfolio de T04 no están implementadas.
+La preparación inicial está versionada y la base técnica de T02 está validada. Stack, arquitectura, idempotencia, concurrencia y reservas D02 están definidos; D01/D04/D05 tienen reglas aceptadas y preguntas residuales en el spec. D06/Q05 está cerrado e implementado en B01; B02 cubrió la lectura y el cálculo base de T03, sin costo, valoración ni precios. D03 y los contratos residuales de D07–D08 siguen abiertos. El diseño de cancelación ya está incluido. T05, T06 y la parte de portfolio de T04 no están implementadas.
 
-Coordinación SDD del 2026-10-27: B01-R1 fue revisado y aceptado; se aplica la autorización condicional para el único commit de B01. Se conserva Vitest. Siguiente acción: entregar un solo prompt B02 y esperar su implementación para revisarla. El coordinador no implementa directamente ni publica; B02 no tiene autorización de commit.
+Coordinación SDD: B01-R1 fue revisado, aceptado y versionado. B02 y B02-R1 fueron aceptados y el usuario autorizó su único commit local: `feat(resources): calculate account cash and reservations`. Se conserva Vitest. Siguiente entregable: un único prompt B03, lectura de últimas cotizaciones; el coordinador espera su resultado antes de continuar y no implementa directamente ni publica.
 
-Bloque B02 delimitado para el modelo externo: cálculo interno de efectivo contable, tenencias ejecutadas, reservas NEW y recursos disponibles, con lectura de movimientos por cuenta mediante puerto y adapter pg. Depende del acceso pg de B01 y de R09/R10/D02. No expone endpoints ni decide costo móvil, valoración, presentación o respuesta pública para D03. Se conserva la cantidad negativa obtenida de los movimientos, sin corregirla ni inferir ventas en corto. Los contratos internos y nombres técnicos se definen al implementar; Q01–Q04/Q06/Q07 continúan abiertos en sus comportamientos afectados. Se requieren unitarias por capa e integración PostgreSQL aislada; no hay garantía transaccional o de concurrencia implementada por añadir esta lectura.
+Bloque B03 delimitado: puerto de lectura de última cotización por instrumento, modelo propio y adapter pg, con selección por mayor fecha no nula y mayor id ante empate. Selecciona la fila sin filtrar previamente close/previousClose; conserva sus valores almacenados, incluidos nulos o valores no utilizables por futuros consumidores, sin retroceder a una fila anterior. No hay controller ni cálculos, no se fijan reglas de validez de precios y no se decide la respuesta de MARKET o portfolio. La ausencia de fila utilizable por fecha se representa internamente sin confundirla con un fallo de lectura; su contrato concreto se define al implementar. B03 cubre la selección de AC25, no cierra F07/Q06 ni AC26–AC28. Requiere unitarias aisladas e integración PostgreSQL; no modifica la fuente SQL.
+
+Bloque B02 implementado y corregido en B02-R1: cálculo interno de efectivo contable, tenencias ejecutadas, reservas NEW y recursos disponibles, con lectura de movimientos por cuenta mediante puerto y adapter pg. Depende del acceso pg de B01 y de R09/R10/D02. No expone endpoints ni decide costo móvil, valoración, presentación o respuesta pública para D03. Se conserva la cantidad negativa obtenida de los movimientos, sin corregirla ni inferir ventas en corto. Los contratos internos y nombres técnicos se definieron al implementar; Q01–Q04/Q06/Q07 continúan abiertos en sus comportamientos afectados. Se agregaron unitarias por capa e integración PostgreSQL aislada; no hay garantía transaccional o de concurrencia implementada por añadir esta lectura. Detalle en [Implementación y validación B02](#implementación-y-validación-b02).
 
 | Tarea | Depende de | Entrega y validación prevista |
 | --- | --- | --- |
 | T00 — Revisar preparación | Esta documentación | Setup versionado en 57c518e. El usuario solicitó continuar hacia implementación, comenzando por definir el stack; no autorizó nuevos commits ni publicación. |
 | T01 — Cerrar contrato y stack | T00 | Stack, arquitectura y reservas D02 aprobados; versiones verificadas y fijadas. D06/Q05 cerrado e implementado; cerrar preguntas residuales de D01/D04/D05, investigar D03 y revisar los contratos de D07–D08 antes del comportamiento afectado; vincular spec y R01–R15. |
 | T02 — Base técnica y datos | Stack aprobado de T01 | Bootstrap, dependencias y Dockerfile/Compose preparados. Validar ejecución local y seed sin editar; la conexión pg y el contrato de errores de búsqueda están implementados en B01. Transacciones y errores de los demás CDU siguen pendientes. Preparar, cuando se autorice implementar, la migración de idempotencia en `orders` conservando el SQL original. |
-| T03 — Consultas contables y de mercado | T02; D01–D03, D07 | Cálculo de tenencias, cash/disponibilidad, costo y último precio; validar casos deterministas y tratamiento aprobado del seed inconsistente. Base compartida por portfolio y órdenes. |
+| T03 — Consultas contables y de mercado | T02; D01–D03, D07 | B02 implementó tenencias ejecutadas, cash contable, reservas NEW, disponibilidad y la lectura pg por cuenta. Quedan costo, valoración, último precio y el tratamiento público del seed inconsistente. Base compartida por portfolio y órdenes. |
 | T04 — Portfolio y búsqueda | T03 para portfolio; T02 para búsqueda; D05/D06 | Búsqueda R02 implementada y validada en B01. Portfolio R01 continúa pendiente de T03 y del cierre de D01/D03/D07. |
 | T05 — Envío de órdenes y test funcional | T03; D02/D04/D05/D07; acuerdo de idempotencia y concurrencia | BUY/SELL, MARKET/LIMIT, cantidad/monto, persistencia de FILLED/NEW/REJECTED y actualización observable. Incorporar UUID por operación, unicidad por usuario, comparación de parámetros originales, bloqueo inicial y política de reintentos acordada. Incluir el test funcional de R14 y verificar el acuerdo de idempotencia; casos adicionales de insuficiencia y conversión según riesgo, sin inventar cobertura porcentual obligatoria. |
 | T06 — Cancelación independiente | T02; reservas D02 y protocolo D05; contrato D08 | Alcance de diseño incluido. Implementar cuando se autorice, con CDU propio y puertos compartidos, sin llamar al CDU de envío. Verificar estados, reservas, pertenencia y concurrencia/reenvíos junto con T05. |
@@ -167,6 +173,8 @@ Los commits futuros se agrupan por tarea coherente y se autorizan individualment
 La preparación y la implementación posterior, cuando se autorice, se mantienen en `feature/backend-implementation`, sin crear una rama adicional para la solución. La base sigue siendo el historial original conservado localmente; `origin` apunta a `backend-cocos` y el fork anterior deja de ser el destino de trabajo.
 
 El usuario autorizó un único commit de B01 después de una revisión satisfactoria. La revisión final acepta la búsqueda, el acceso pg mínimo, las pruebas y configuración por grupos, la sanitización corregida y su documentación como una entrega coherente. Mensaje: `feat(instruments): implement literal instrument search`. La autorización se aplica a ese commit; no permite commits de B02, push, PR ni merge. El registro local de sesiones permanece excluido.
+
+Autorización posterior del 2026-10-28: un único commit de B02/B02-R1, ya revisados, con cálculo interno de recursos, lectura pg, pruebas y documentación asociada. Mensaje: `feat(resources): calculate account cash and reservations`. Esta autorización es independiente de la de B01 y no permite push, PR, merge ni commits de B03. El prompt de B03 es el siguiente entregable; no se ejecuta implementación por el coordinador.
 
 El usuario autorizó el commit `docs: prepare backend challenge setup`, realizado como `57c518e` con los diez archivos del setup y sin `.DS_Store`. Esa autorización ya fue utilizada y no habilita otros commits, push, PR ni merge. La solicitud posterior de continuar con la implementación se trata con el alcance definido al inicio de este plan. Las reglas de commits atómicos y autorizaciones independientes permanecen vigentes.
 
@@ -269,6 +277,82 @@ Implementación autorizada por el usuario el 2026-10-27, limitada a B01; sin com
 - La integración PostgreSQL y las pruebas HTTP con base real requieren `db-test` activo; las 53 unitarias y la validación HTTP con repositorio falso no requieren base.
 - El diagnóstico privilegia la seguridad sobre el detalle textual: no emite mensajes arbitrarios del driver. Conserva operación, clase permitida, código permitido y descripción estática.
 - La evidencia HTTP se ejecutó en el host macOS; Docker se usó para PostgreSQL real, no para ejecutar la suite dentro de un contenedor Node.
+
+## Implementación y validación B02
+
+Implementación autorizada por el usuario el 2026-10-27, limitada a la base interna de recursos de una cuenta. No se expusieron endpoints, no se modificaron órdenes ni el seed y no se hizo commit, push, PR ni merge. Código, identificadores y pruebas en inglés; documentación en español.
+
+### Alcance y contratos internos
+
+- `AccountMovement` es el modelo propio de una fila relevante de `orders`: `id`, `instrumentId`, `side`, `status`, `size` y `price`. El precio se conserva como texto decimal, tal como lo entrega PostgreSQL para `NUMERIC`, sin pasar por coma flotante binaria.
+- `calculateAccountResources(movements)` es una función pura de dominio, independiente de NestJS, HTTP y SQL. Procesa todos los movimientos de una cuenta y devuelve `AccountResources`: `accountingCash`, `reservedBuyCash`, `availableCash` e `instruments`, con cantidad ejecutada, cantidad reservada por ventas y cantidad disponible por instrumento.
+- `AccountMovementRepository.findByUserId(userId)` es el puerto de salida. `PostgresAccountMovementRepository` consulta `orders` con `userid = $1`, alias explícitos para `instrument_id` y `price::text`, y mapea cada fila al modelo propio. Rechaza `side`, `status` o `size` almacenados no admitidos en lugar de convertirlos en cero.
+- El adapter depende de `PostgresQueryable`, satisfecho tanto por `Pool` como por `PoolClient`. Esto deja preparada la reutilización de un mismo cliente en una transacción futura, sin abrir transacciones, bloquear filas, aplicar aislamiento, reintentar ni prometer atomicidad en este bloque.
+- `GetAccountResourcesService` implementa el puerto de entrada interno `GetAccountResourcesUseCase`, lee la cuenta y aplica el cálculo. Envuelve cualquier fallo de lectura o de datos en `AccountResourcesError` con su causa. Una lista vacía del repositorio significa cuenta sin movimientos; un fallo no se transforma en recursos cero.
+- `ResourcesModule` compone el repositorio y el servicio mediante los tokens `ACCOUNT_MOVEMENT_REPOSITORY` y `GET_ACCOUNT_RESOURCES_USE_CASE`, reutiliza `PG_POOL` y queda importado por `AppModule`. No registra controllers ni rutas; el puerto de entrada queda disponible para futuros CDU.
+
+### Reglas aplicadas
+
+- `BUY FILLED` suma `size` a la tenencia del instrumento y resta `size × price` al efectivo contable. `SELL FILLED` resta `size` y suma `size × price`. La regla depende de `status` y `side`, por lo que incluye ejecuciones `MARKET` y `LIMIT` sin leer el tipo de orden.
+- `CASH_IN FILLED` suma `size` al efectivo y `CASH_OUT FILLED` lo resta. Se reconocen por `side` y no generan posición accionaria; en el seed están asociados a ARS/MONEDA.
+- `BUY NEW` reserva `size × price`; `SELL NEW` reserva `size` acciones del instrumento. Las reservas no alteran efectivo contable ni tenencia ejecutada. Un `BUY NEW` no crea una entrada de instrumento y un `SELL NEW` sí puede crear una con ejecución cero.
+- `REJECTED` y `CANCELLED` no aportan ejecución ni reserva. Cambiar una orden de `NEW` a `CANCELLED` elimina su reserva sin revertir ejecuciones.
+- Efectivo disponible = efectivo contable − reservas de compras `NEW`; cantidad disponible = tenencia ejecutada − reservas de ventas `NEW` del mismo instrumento. No se limitan a cero.
+- Los importes se calculan con `decimal.js`, sin redondeos intermedios, divisiones ni reglas de presentación. Un precio ausente, no numérico, no finito o no positivo para un movimiento que lo requiere produce error. `NEW` con `CASH_IN`/`CASH_OUT` también se rechaza por no tener una reserva aprobada.
+- La tenencia negativa del seed se conserva aritméticamente. No se suma `NEW`, no se corrige el origen y no se infiere soporte de ventas en corto.
+
+Los nombres de clases, tokens y función son decisiones técnicas de esta implementación, no acuerdos funcionales previos. No se agregaron índices, migraciones, tablas, caché, colas ni dependencia de marketdata.
+
+### Corrección B02-R1 — precisión de acumulados
+
+La revisión independiente reprodujo el defecto con cinco movimientos `BUY NEW` de `size = 2147483647` y `price = "99999999.99"`: la reserva exacta es `1073741823392625817.65`, pero la precisión global predeterminada de 20 dígitos significativos devolvía `1073741823392625817.70`. También se observó dependencia del orden al mezclar compras y ventas.
+
+La corrección mantiene `decimal.js` y crea una instancia local con `Decimal.clone` por cálculo. Su precisión se deriva de los datos y de la operación:
+
+- Para cada movimiento monetario se obtienen los dígitos enteros del `size` (INT) y los del precio, y los decimales escritos del precio. Un producto necesita como máximo la suma de los dígitos enteros y conserva los decimales del precio.
+- Sumar como máximo `n` movimientos puede agregar `digits(n)` dígitos enteros. Cada movimiento contribuye a un solo acumulador —ejecutado o reservado— y la diferencia disponible está acotada por esa misma suma de `n` términos.
+- La precisión local es `dígitos enteros máximos + decimales máximos + digits(n)`, con `n` igual a la cantidad de movimientos. No se usa una constante de precisión arbitraria, no se recortan agregados al rango de una columna y no se modifica la configuración global.
+- Los acumuladores, precios y productos usan esa instancia local. Los resultados que caben en la precisión global se devuelven con el constructor global; los que la exceden usan un constructor local estable por cantidad de dígitos significativos, de modo que valores iguales sean estructuralmente comparables. No se impone `ORDER BY`; el resultado exacto es invariante ante permutaciones.
+
+Esta corrección no define Q03: no introduce divisiones, redondeos de presentación, costo promedio, rendimientos ni cotizaciones.
+
+Revisión independiente finalizada el 2026-10-28: no se detectaron pendientes bloqueantes para el alcance B02/B02-R1 con los movimientos leídos del esquema actual. Se contrastó el build con un oráculo de centavos enteros independiente en siete tamaños de historia (1, 5, 9, 10, 99, 100 y 1000 movimientos), cada uno en orden directo e inverso, y la regresión original de cinco reservas máximas. Todos coincidieron exactamente y la configuración global se conservó. Tipos, build y las 75 pruebas unitarias sin base ya habían pasado sobre los mismos archivos, cuya identidad se comprobó por hash; se completó ahora la suite PostgreSQL/HTTP: 15 archivos y 126 pruebas aprobadas con Node 24.22.1. Después se verificó seed intacto y ausencia de fixtures; se retiró el contenedor de pruebas usado en esta revisión. No se modificaron implementación ni pruebas.
+
+### Pruebas y evidencia
+
+| Garantía | Tipo de prueba | Resultado |
+| --- | --- | --- |
+| Efectivo, tenencia, reservas y disponibles; `NEW`/`REJECTED`/`CANCELLED`; aislamiento por instrumento; decimales exactos; tenencia negativa; precio inválido; acumulados grandes y permutaciones | Unitarias de dominio con datos en memoria | 11 pruebas aprobadas |
+| Lectura por cuenta a través del puerto; cuenta sin movimientos; fallo de lectura e inválidos envueltos con causa | Unitarias de servicio con doble tipado | 4 pruebas aprobadas |
+| Parametrización por cuenta, mapeo, texto decimal y nulos, valores almacenados inválidos y propagación de errores | Unitarias del adapter con cliente falso | 7 pruebas aprobadas |
+| Adapter y composición reales; tres cuentas fixture; aislamiento por cuenta e instrumento; decimal `0.30`; caso límite INT/NUMERIC(10,2); lectura del seed y conservación de la negativa | Integración con PostgreSQL aislado | 5 pruebas aprobadas |
+| Regresión del contrato y comportamiento de búsqueda B01 | HTTP con Nest/Express y PostgreSQL aislado | 31 pruebas aprobadas |
+
+La fixture principal reproduce el criterio aprobado: `CASH_IN` de 1.000, `BUY FILLED` de 3 a 100 y `SELL FILLED` de 1 a 120 dejan efectivo contable 820 y tenencia 2. Una `BUY NEW` de 2 a 50 deja reserva 100 y disponible 720; una `SELL NEW` de 1 deja una acción disponible sin cambiar efectivo contable ni tenencia ejecutada. `REJECTED` y `CANCELLED` no modifican esos valores.
+
+La regresión B02-R1 confirma que cinco reservas `BUY NEW` con `size = 2147483647` y `price = "99999999.99"` producen exactamente `1073741823392625817.65`; el efectivo contable queda en `0.00` y el disponible en `-1073741823392625817.65`. Un conjunto mixto de cinco compras, una venta, una entrada y una salida de efectivo más reservas produjo `-858993457948668544.12` de efectivo contable, `214748364678525163.53` de reserva y `-1073741822627193707.65` de disponible, con el mismo resultado en todas las permutaciones probadas. El caso combinado de importes grandes y centavos conserva reservas como `214748364678525163.83` y el caso 3 × 0.10 sigue en `0.30`. La configuración global de `Decimal` no cambió. Los valores se contrastaron con un oráculo de centavos enteros independiente de `decimal.js`.
+
+La lectura del seed sin cambios produjo efectivo contable `753000`, reservas de compras `125500`, disponible `627500` y tenencias `31 = -10`, `47 = 40`, `54 = 500`. No se listó ARS/MONEDA como posición y el `BUY NEW` del instrumento 31 no corrigió la cantidad negativa.
+
+Comandos ejecutados con Node 24.22.1, sin cambios de versiones:
+
+- `npx --yes node@24.22.1 node_modules/typescript/bin/tsc --noEmit -p tsconfig.json`: correcto.
+- `npx --yes node@24.22.1 node_modules/typescript/bin/tsc --noEmit -p tsconfig.test.json`: correcto.
+- `npx --yes node@24.22.1 node_modules/typescript/bin/tsc -p tsconfig.json`: build correcto.
+- `npx --yes node@24.22.1 node_modules/vitest/vitest.mjs run --config vitest.unit.config.ts`: 11 archivos y 75 pruebas, con `db-test` todavía apagado.
+- `npx --yes node@24.22.1 node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts`: 2 archivos y 20 pruebas con `db-test`.
+- `npx --yes node@24.22.1 node_modules/vitest/vitest.mjs run`: 15 archivos y 126 pruebas (75 unitarias, 20 de integración y 31 HTTP).
+- `DOCKER_CONTEXT=colima docker-compose --profile test up -d --wait db-test`: PostgreSQL de pruebas saludable; el contenedor se retiró al finalizar.
+
+Después de la suite se verificaron 4 usuarios, 66 instrumentos, 11 órdenes, 126 cotizaciones, cero fixtures B02 y cero instrumentos con id mayor o igual a 1000. Las fixtures propias se eliminaron; `database.sql` permanece intacto.
+
+### Decisiones pendientes y limitaciones
+
+- B02 y B02-R1 están aceptados tras revisión independiente y el usuario autorizó su único commit local. Esa autorización no se extiende a otros bloques ni a publicación; la revisión no cierra sus decisiones funcionales pendientes.
+- No hay endpoint de portfolio, envío, cancelación ni transferencias. El resultado interno con `Decimal` no fija su serialización HTTP.
+- D03 sigue abierto: la cantidad negativa se conserva, pero no se decide su representación pública, valoración, costo o rendimiento.
+- No se implementaron costo promedio móvil, valoración, retorno, precios, conversión por monto, idempotencia, migraciones ni bloqueos. Q01–Q04/Q06/Q07 continúan abiertas en sus comportamientos afectados. Q03 no queda resuelta por la precisión interna de suma y producto.
+- Esta lectura no ofrece garantías de concurrencia para enviar órdenes y no debe presentarse como protocolo transaccional completo.
 
 ## Revisión del diseño de alto nivel
 
