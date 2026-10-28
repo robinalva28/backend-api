@@ -1,4 +1,5 @@
 import type { QueryResult, QueryResultRow } from 'pg';
+import { PostgresPersistedOrderRepository } from '../../../orders/infrastructure/persistence/postgres-persisted-order.repository.js';
 import { PostgresLatestQuoteRepository } from '../../../quotes/infrastructure/persistence/postgres-latest-quote.repository.js';
 import { PostgresAccountMovementRepository } from '../../../resources/infrastructure/persistence/postgres-account-movement.repository.js';
 import { AccountTransactionError } from '../../application/errors/account-transaction.error.js';
@@ -210,6 +211,7 @@ function createContext(
     userId,
     accountMovements: new PostgresAccountMovementRepository(client),
     latestQuotes: new PostgresLatestQuoteRepository(client),
+    persistedOrders: new PostgresPersistedOrderRepository(client),
   };
 }
 
