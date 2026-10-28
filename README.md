@@ -2,7 +2,7 @@
 
 Objetivo: preparar una API REST de portfolio, búsqueda de activos y envío de órdenes según la [consigna backend](backend-challenge.md), tomada del [repositorio original](https://github.com/cocoscap/cocos-challenge).
 
-**Estado: búsqueda de instrumentos, base interna de recursos de cuenta, lectura interna de última cotización y unidad transaccional por cuenta implementadas.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. B03 lee internamente la última fila de `marketdata` por instrumento sin exponerla ni calcular rendimientos. B04-A agrega el puerto transaccional por cuenta y su adapter pg, con READ COMMITTED explícito, bloqueo inicial de la fila del usuario y un mismo cliente hasta COMMIT/ROLLBACK; no implementa envío de órdenes, idempotencia ni reintentos. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
+**Estado: búsqueda de instrumentos, base interna de recursos de cuenta, lectura interna de última cotización, unidad transaccional por cuenta y migración de identidad idempotente en `orders` implementadas.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. B03 lee internamente la última fila de `marketdata` por instrumento sin exponerla ni calcular rendimientos. B04-A agrega el puerto transaccional por cuenta y su adapter pg, con READ COMMITTED explícito, bloqueo inicial de la fila del usuario y un mismo cliente hasta COMMIT/ROLLBACK. B04-B agrega la migración aditiva de identidad idempotente en `orders`: columnas anulables `idempotency_key` (UUID) e `idempotency_metadata` (JSONB), presencia conjunta, contenedor versionado y unicidad por usuario/clave. No implementa envío de órdenes, comparación de intenciones, recuperación ni reintentos. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
 
 - [Consigna original](backend-challenge.md) y [base de datos provista](database.sql).
 - [Requisitos y criterios de aceptación](docs/requisitos.md).
@@ -54,6 +54,49 @@ Se realiza un único intento. El runner solo devuelve `committed` cuando `QueryR
 
 Corrección B04-A-R1: se comprueba la confirmación efectiva de `QueryResult.command`, se distingue el rollback conocido del COMMIT incierto y el escenario concurrente libera y espera las operaciones iniciadas también ante una falla controlada, preservando el error original. B04-A/B04-A-R1 aceptados tras revisión independiente con tipos, build y 169 pruebas aprobadas en Node 24.22.1; el usuario autorizó su único commit local, sin publicación. Detalle en el [plan](docs/plan.md#corrección-b04-a-r1--confirmación-efectiva-y-limpieza).
 
+## Migración de identidad idempotente en orders
+
+B04-B prepara el esquema para conservar la identidad y los parámetros originales de una orden. La migración es aditiva y no completa la idempotencia. Agrega:
+
+- `idempotency_key UUID NULL`.
+- `idempotency_metadata JSONB NULL`.
+
+Ambas columnas son nulas en las filas históricas. La constraint `orders_idempotency_pair_check` exige que clave y metadatos estén presentes juntos, y que una fila con identidad tenga `userid`. La constraint `orders_idempotency_metadata_check` exige un objeto versionado. La constraint `orders_user_idempotency_key_unique` aplica unicidad sobre `(userid, idempotency_key)`; los NULL históricos no colisionan y una misma clave puede existir en cuentas distintas.
+
+El contenedor mínimo es:
+
+```json
+{"version": 1, "parameters": {"price": "10.10", "amount": "100.00"}}
+```
+
+`version` es un entero positivo que identifica el formato. `parameters` es un objeto abierto: su estructura semántica completa, la comparación de intenciones y la compatibilidad de reenvíos quedan para los bloques correspondientes. Los valores decimales dentro de `parameters` deben guardarse como strings; la migración conserva esos strings, pero no puede validar por sí sola todos los campos de un objeto abierto.
+
+La migración no se ejecuta al iniciar la aplicación. Se aplica manualmente con una única transacción y detención ante errores:
+
+```sh
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -1 -f -' \
+  < db/migrations/20261028-b04b-order-idempotency.sql
+```
+
+Para la base de pruebas efímera:
+
+```sh
+docker compose --profile test exec -T db-test sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -1 -f -' \
+  < db/migrations/20261028-b04b-order-idempotency.sql
+```
+
+Si el CLI no tiene el plugin `docker compose`, usar `docker-compose` con el mismo comando. El flag `-1` es obligatorio: agrupa el `LOCK TABLE`, las verificaciones y el DDL en una sola transacción. Sin él, un error podría dejar cambios parciales.
+
+Comportamiento documentado:
+
+- **Primera ejecución:** agrega las columnas y constraints; las filas históricas quedan con SQL NULL y conservan todos sus valores originales.
+- **Segunda ejecución:** verifica tipos, nulabilidad, ausencia de defaults y constraints; si coinciden, no cambia nada.
+- **Esquema previo incompatible:** eleva una excepción con el detalle del desajuste y la transacción revierte. No se usa `IF NOT EXISTS` para ocultar incompatibilidades.
+
+Corrección B04-B-R1/R2: la segunda ejecución compara exactamente la representación canónica de `pg_get_constraintdef`, sin normalizar espacios ni alterar literales SQL, y verifica las columnas y el estado de validación/efectividad de las constraints. Rechaza `UNIQUE` con columnas extra, expresiones `CHECK` debilitadas con `OR true`, constraints `NOT VALID` y claves JSON alteradas como `'ver sion'` o `'para meters'`, sin reparar el esquema. B04-B/R1/R2 aceptados tras revisión independiente con 197 pruebas aprobadas; el usuario autorizó su único commit local, sin publicación. Detalle en el [plan](docs/plan.md#corrección-b04-b-r2--literales-preservados).
+
+Después de inicializar una base desde `database.sql` con `docker compose up --build --wait` (o el arranque equivalente de `db-test`), la migración se aplica con el comando anterior. En esta validación se ejecutó solo contra `db-test`; no se aplicó a desarrollo. La nulabilidad conserva el histórico, pero no obliga por sí sola a los escritores futuros a enviar identidad: el futuro API deberá exigir clave y metadatos. La unicidad por sí sola no aporta recuperación, comparación ni disponibilidad. Detalle de decisiones y evidencia en el [plan](docs/plan.md#implementación-y-validación-b04-b).
+
 ## Pruebas
 
 Unitarias aisladas, sin PostgreSQL ni aplicación HTTP real:
@@ -74,7 +117,7 @@ npm run test:http
 npm test
 ```
 
-`npm test` ejecuta la suite completa: 19 archivos y 169 pruebas (98 unitarias, 40 de integración y 31 HTTP). La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica. Las pruebas transaccionales verifican aislamiento, cliente compartido, serialización por cuenta, progreso de cuentas distintas, confirmación efectiva, rollback conocido y limpieza ante fallos.
+`npm test` ejecuta la suite completa: 20 archivos y 197 pruebas (98 unitarias, 68 de integración y 31 HTTP). La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica. Las pruebas transaccionales verifican aislamiento, cliente compartido, serialización por cuenta, progreso de cuentas distintas, confirmación efectiva, rollback conocido y limpieza ante fallos. Las 28 pruebas de migración aplican la SQL dentro de transacciones revertidas y comprueban el histórico, las constraints, el contenedor versionado, los decimales como strings, la segunda ejecución, la firma canónica exacta, las propiedades de validación y el fallo seguro ante incompatibilidad, literales alterados o estado incompleto. La migración es SQL: no se agregó lógica de script o adapter que requiera unitarias nuevas.
 
 Los fallos técnicos registran solo operación, clase y código permitidos y una descripción estática; no registran mensajes arbitrarios del driver, credenciales ni valores de solicitud.
 
@@ -89,7 +132,7 @@ npm run build
 PORT=3002 npm start
 ```
 
-Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda, el cálculo interno de recursos, la lectura de cotizaciones y la unidad transaccional tienen pruebas unitarias aisladas e integración pg; la búsqueda además tiene pruebas HTTP. La integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
+Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda, el cálculo interno de recursos, la lectura de cotizaciones y la unidad transaccional tienen pruebas unitarias aisladas e integración pg; la búsqueda además tiene pruebas HTTP. La migración B04-B se valida con integración PostgreSQL; no se agregaron unitarias para SQL sin lógica de script. La integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
 
 La verificación Docker de esta sesión utilizó el perfil existente de Colima y plugins temporales Compose 5.6.1/Buildx 0.38.1, sin instalarlos globalmente ni cambiar el contexto activo. Con Colima, se puede elegir el motor por comando con `DOCKER_CONTEXT=colima`; los plugins deben estar disponibles en el CLI para usar los comandos anteriores. Resultados de validación en el plan.
 
