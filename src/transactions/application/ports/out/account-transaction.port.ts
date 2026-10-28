@@ -1,5 +1,6 @@
 import type { LatestQuoteRepository } from '../../../../quotes/application/ports/out/latest-quote.repository.js';
 import type { PersistedOrderRepository } from '../../../../orders/application/ports/out/persisted-order.repository.js';
+import type { PreparedOrderRepository } from '../../../../orders/application/ports/out/prepared-order.repository.js';
 import type { AccountMovementRepository } from '../../../../resources/application/ports/out/account-movement.repository.js';
 
 /**
@@ -11,6 +12,7 @@ export interface AccountTransactionContext {
   readonly accountMovements: AccountMovementRepository;
   readonly latestQuotes: LatestQuoteRepository;
   readonly persistedOrders: PersistedOrderRepository;
+  readonly preparedOrders: PreparedOrderRepository;
 }
 
 export type AccountTransactionResult<T> =
