@@ -2,7 +2,7 @@
 
 Objetivo: preparar una API REST de portfolio, búsqueda de activos y envío de órdenes según la [consigna backend](backend-challenge.md), tomada del [repositorio original](https://github.com/cocoscap/cocos-challenge).
 
-**Estado: búsqueda de instrumentos y base interna de recursos de cuenta implementadas.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
+**Estado: búsqueda de instrumentos, base interna de recursos de cuenta y lectura interna de última cotización implementadas.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. B03 lee internamente la última fila de `marketdata` por instrumento sin exponerla ni calcular rendimientos. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
 
 - [Consigna original](backend-challenge.md) y [base de datos provista](database.sql).
 - [Requisitos y criterios de aceptación](docs/requisitos.md).
@@ -40,6 +40,10 @@ La entrada debe ser un único valor textual de 1 a 255 caracteres Unicode despu�
 
 B02 calcula, desde las órdenes de una cuenta, efectivo contable, tenencias ejecutadas, reservas de órdenes `NEW` y recursos disponibles. El cálculo es decimal y no modifica órdenes ni el seed. Con los datos provistos obtiene efectivo contable `753000.00`, reservas de compra `125500.00` y disponible `627500.00`, conservando la tenencia negativa del instrumento 31. No hay controller, ruta ni respuesta HTTP para esta base; portfolio, valuación, costo y presentación siguen pendientes.
 
+## Cotizaciones internas
+
+B03 agrega un puerto de lectura de la última cotización por instrumento. Selecciona la mayor `date` no nula y, ante empate, el mayor `id`; conserva `close` y `previousClose` de esa misma fila como texto decimal, incluidos nulos, sin retroceder a otra fila ni validar precios. La ausencia de fila se representa internamente como `null` y un fallo de lectura se propaga. La ordenación usa la columna `DATE` nativa, no el texto de calendario proyectado; una regresión con `9999-12-31` y `10000-01-01` verifica el caso. No hay endpoint, consumidor de portfolio u órdenes, cálculo de retorno ni regla de MARKET.
+
 ## Pruebas
 
 Unitarias aisladas, sin PostgreSQL ni aplicación HTTP real:
@@ -49,7 +53,7 @@ npm run test:unit
 npm run test:typecheck
 ```
 
-La suite unitaria cubre servicio/CDU, controller, pipe/DTO, filtro HTTP, persistencia con cliente pg falso, configuración, ciclo de vida del pool y diagnósticos, además del cálculo de recursos y su adapter pg. Resultado con Node 24.22.1: 11 archivos y 75 pruebas.
+La suite unitaria cubre servicio/CDU, controller, pipe/DTO, filtro HTTP, persistencia con cliente pg falso, configuración, ciclo de vida del pool y diagnósticos, además del cálculo de recursos y sus adapters pg. Resultado con Node 24.22.1: 12 archivos y 80 pruebas.
 
 Integración PostgreSQL y pruebas HTTP, con la base de pruebas efímera:
 
@@ -60,7 +64,7 @@ npm run test:http
 npm test
 ```
 
-`npm test` ejecuta la suite completa: 15 archivos y 126 pruebas (75 unitarias, 20 de integración y 31 HTTP). La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica.
+`npm test` ejecuta la suite completa: 17 archivos y 142 pruebas (80 unitarias, 31 de integración y 31 HTTP). La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica.
 
 Los fallos técnicos registran solo operación, clase y código permitidos y una descripción estática; no registran mensajes arbitrarios del driver, credenciales ni valores de solicitud.
 
@@ -75,7 +79,7 @@ npm run build
 PORT=3002 npm start
 ```
 
-Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda y el cálculo interno de recursos tienen pruebas unitarias aisladas, integración pg y HTTP para la búsqueda; la integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
+Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda, el cálculo interno de recursos y la lectura de cotizaciones tienen pruebas unitarias aisladas, integración pg y HTTP para la búsqueda; la integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
 
 La verificación Docker de esta sesión utilizó el perfil existente de Colima y plugins temporales Compose 5.6.1/Buildx 0.38.1, sin instalarlos globalmente ni cambiar el contexto activo. Con Colima, se puede elegir el motor por comando con `DOCKER_CONTEXT=colima`; los plugins deben estar disponibles en el CLI para usar los comandos anteriores. Resultados de validación en el plan.
 

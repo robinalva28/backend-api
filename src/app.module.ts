@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { InstrumentsModule } from './instruments/instruments.module.js';
+import { QuotesModule } from './quotes/quotes.module.js';
 import { ResourcesModule } from './resources/resources.module.js';
 
 @Module({
@@ -18,6 +19,7 @@ import { ResourcesModule } from './resources/resources.module.js';
       },
     }),
     InstrumentsModule,
+    QuotesModule,
     ResourcesModule,
   ],
 })
