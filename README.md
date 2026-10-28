@@ -2,7 +2,7 @@
 
 Objetivo: preparar una API REST de portfolio, búsqueda de activos y envío de órdenes según la [consigna backend](backend-challenge.md), tomada del [repositorio original](https://github.com/cocoscap/cocos-challenge).
 
-**Estado: búsqueda de instrumentos, base interna de recursos de cuenta, lectura interna de última cotización, unidad transaccional por cuenta y migración de identidad idempotente en `orders` implementadas.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. B03 lee internamente la última fila de `marketdata` por instrumento sin exponerla ni calcular rendimientos. B04-A agrega el puerto transaccional por cuenta y su adapter pg, con READ COMMITTED explícito, bloqueo inicial de la fila del usuario y un mismo cliente hasta COMMIT/ROLLBACK. B04-B agrega la migración aditiva de identidad idempotente en `orders`: columnas anulables `idempotency_key` (UUID) e `idempotency_metadata` (JSONB), presencia conjunta, contenedor versionado y unicidad por usuario/clave. No implementa envío de órdenes, comparación de intenciones, recuperación ni reintentos. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
+**Estado: búsqueda de instrumentos, base interna de recursos de cuenta, lectura interna de última cotización, unidad transaccional por cuenta, migración de identidad idempotente en `orders` y componente interno de intención original de órdenes implementados.** NestJS con Express y TypeScript estricto, dependencias fijadas, Docker Compose para ejecución local y `GET /instruments?query=...` conectado a PostgreSQL mediante pg. B02 calcula internamente efectivo contable, tenencias ejecutadas, reservas `NEW` y recursos disponibles con acumulados decimales exactos; no expone un endpoint de portfolio. B03 lee internamente la última fila de `marketdata` por instrumento sin exponerla ni calcular rendimientos. B04-A agrega el puerto transaccional por cuenta y su adapter pg, con READ COMMITTED explícito, bloqueo inicial de la fila del usuario y un mismo cliente hasta COMMIT/ROLLBACK. B04-B agrega la migración aditiva de identidad idempotente en `orders`: columnas anulables `idempotency_key` (UUID) e `idempotency_metadata` (JSONB), presencia conjunta, contenedor versionado y unicidad por usuario/clave. B04-C agrega el modelo puro de intención original, normalización decimal y comparación semántica de metadatos versión 1; no implementa HTTP, persistencia, ejecución ni recuperación. Portfolio público, envío y cancelación de órdenes siguen sin implementarse. La raíz `/` responde 404.
 
 - [Consigna original](backend-challenge.md) y [base de datos provista](database.sql).
 - [Requisitos y criterios de aceptación](docs/requisitos.md).
@@ -97,6 +97,37 @@ Corrección B04-B-R1/R2: la segunda ejecución compara exactamente la representa
 
 Después de inicializar una base desde `database.sql` con `docker compose up --build --wait` (o el arranque equivalente de `db-test`), la migración se aplica con el comando anterior. En esta validación se ejecutó solo contra `db-test`; no se aplicó a desarrollo. La nulabilidad conserva el histórico, pero no obliga por sí sola a los escritores futuros a enviar identidad: el futuro API deberá exigir clave y metadatos. La unicidad por sí sola no aporta recuperación, comparación ni disponibilidad. Detalle de decisiones y evidencia en el [plan](docs/plan.md#implementación-y-validación-b04-b).
 
+## Intención original de órdenes
+
+B04-C implementa un componente puro en `src/orders/domain` para representar la intención original, normalizar sus valores decimales y comparar dos intenciones sin HTTP, NestJS, SQL o persistencia:
+
+- `createOrderIntent` valida instrumento, BUY/SELL, MARKET/LIMIT, exactamente uno entre `size` y `amount`, positividad, acciones enteras y máximo dos decimales efectivos.
+- `OrderIntent` conserva `instrumentId`, `side`, `type`, `mode`, `size`, `amount` y `limitPrice`. `limitPrice` solo existe para LIMIT; MARKET no incorpora `close`.
+- Los valores canónicos son strings sin exponente y sin redondeo: `10`, `10.0` y `10.00` se normalizan a `"10"`. `size` y `amount` siguen siendo modos distintos aunque compartan el mismo valor.
+- `buildOrderIntentMetadata` produce el contenedor `{ "version": 1, "parameters": ... }` con la forma técnica v1; `readOrderIntentMetadata` valida y reconstruye la intención.
+- `orderIntentsEqual` compara instrumento, side, tipo, modo, valor y precio LIMIT de forma explícita. No depende de la serialización JSON ni del orden de propiedades.
+- Metadatos incompletos, inválidos o de versión desconocida producen `OrderIntentError` con código interno; no se convierten en coincidencia, conflicto ni autorización para crear otra orden.
+
+Ejemplo de metadatos v1 para una LIMIT por cantidad:
+
+```json
+{
+  "version": 1,
+  "parameters": {
+    "instrumentId": 47,
+    "side": "BUY",
+    "type": "LIMIT",
+    "mode": "size",
+    "size": "10",
+    "limitPrice": "10.1"
+  }
+}
+```
+
+La normalización usa `decimal.js` con una configuración local derivada del valor; no modifica la configuración global, no convierte importes a `Number` y conserva valores grandes exactos. La sintaxis léxica de la entrada HTTP, los exponentes, los ceros finales escritos, los rangos nuevos, las divisiones y el redondeo de presentación siguen abiertos en Q02/Q03: este componente no define el contrato HTTP. Tampoco incluye cantidad derivada por conversión, estado, disponibilidad, reservas, ejecución ni recuperación.
+
+B04-C aceptado tras revisión independiente: tipos de aplicación/pruebas, build y 172 unitarias aprobadas con Node 24.22.1, sin servicios externos. El usuario autorizó su único commit local, sin publicación; persistencia y comportamiento HTTP de órdenes todavía no están implementados.
+
 ## Pruebas
 
 Unitarias aisladas, sin PostgreSQL ni aplicación HTTP real:
@@ -106,7 +137,7 @@ npm run test:unit
 npm run test:typecheck
 ```
 
-La suite unitaria cubre servicio/CDU, controller, pipe/DTO, filtro HTTP, persistencia con cliente pg falso, configuración, ciclo de vida del pool y diagnósticos, además del cálculo de recursos, sus adapters pg y el ciclo transaccional por cuenta. Resultado con Node 24.22.1: 13 archivos y 98 pruebas.
+La suite unitaria cubre servicio/CDU, controller, pipe/DTO, filtro HTTP, persistencia con cliente pg falso, configuración, ciclo de vida del pool y diagnósticos, además del cálculo de recursos, sus adapters pg, el ciclo transaccional por cuenta y el modelo puro de intención original. Resultado con Node 24.22.1: 15 archivos y 172 pruebas.
 
 Integración PostgreSQL y pruebas HTTP, con la base de pruebas efímera:
 
@@ -117,7 +148,7 @@ npm run test:http
 npm test
 ```
 
-`npm test` ejecuta la suite completa: 20 archivos y 197 pruebas (98 unitarias, 68 de integración y 31 HTTP). La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica. Las pruebas transaccionales verifican aislamiento, cliente compartido, serialización por cuenta, progreso de cuentas distintas, confirmación efectiva, rollback conocido y limpieza ante fallos. Las 28 pruebas de migración aplican la SQL dentro de transacciones revertidas y comprueban el histórico, las constraints, el contenedor versionado, los decimales como strings, la segunda ejecución, la firma canónica exacta, las propiedades de validación y el fallo seguro ante incompatibilidad, literales alterados o estado incompleto. La migración es SQL: no se agregó lógica de script o adapter que requiera unitarias nuevas.
+`npm test` no se reejecutó en B04-C porque el bloque no modifica persistencia, HTTP ni infraestructura. La suite unitaria actual es de 15 archivos y 172 pruebas. Los grupos de integración (5 archivos, 68 pruebas) y HTTP (2 archivos, 31 pruebas) conservan la última validación; la referencia completa anterior era 20 archivos y 197 pruebas. La integración y las pruebas HTTP con base real usan `db-test` en `127.0.0.1:5433`, base `cocos_test`, y rechazan cualquier otro nombre de base para no caer en desarrollo. Se puede cambiar el host o el puerto con `TEST_PGHOST` y `PGTESTPORT`, y las credenciales con `TEST_PGUSER` y `TEST_PGPASSWORD`. Las pruebas insertan fixtures con identificadores propios y los eliminan al terminar; el seed original no se modifica. Las pruebas transaccionales verifican aislamiento, cliente compartido, serialización por cuenta, progreso de cuentas distintas, confirmación efectiva, rollback conocido y limpieza ante fallos. Las 28 pruebas de migración aplican la SQL dentro de transacciones revertidas y comprueban el histórico, las constraints, el contenedor versionado, los decimales como strings, la segunda ejecución, la firma canónica exacta, las propiedades de validación y el fallo seguro ante incompatibilidad, literales alterados o estado incompleto.
 
 Los fallos técnicos registran solo operación, clase y código permitidos y una descripción estática; no registran mensajes arbitrarios del driver, credenciales ni valores de solicitud.
 
@@ -132,7 +163,7 @@ npm run build
 PORT=3002 npm start
 ```
 
-Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda, el cálculo interno de recursos, la lectura de cotizaciones y la unidad transaccional tienen pruebas unitarias aisladas e integración pg; la búsqueda además tiene pruebas HTTP. La migración B04-B se valida con integración PostgreSQL; no se agregaron unitarias para SQL sin lógica de script. La integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
+Se usa otro puerto libre para no colisionar con Compose. Se valida `PORT` al iniciar y se activa el cierre por señales, incluido el cierre del pool de PostgreSQL. La búsqueda, el cálculo interno de recursos, la lectura de cotizaciones, la unidad transaccional y la intención original tienen pruebas unitarias aisladas e integración pg donde corresponde; la búsqueda además tiene pruebas HTTP. La migración B04-B se valida con integración PostgreSQL; no se agregaron unitarias para SQL sin lógica de script. La integración y las pruebas con base requieren `db-test`. La comprobación de arranque no equivale a validación funcional de los CDU pendientes.
 
 La verificación Docker de esta sesión utilizó el perfil existente de Colima y plugins temporales Compose 5.6.1/Buildx 0.38.1, sin instalarlos globalmente ni cambiar el contexto activo. Con Colima, se puede elegir el motor por comando con `DOCKER_CONTEXT=colima`; los plugins deben estar disponibles en el CLI para usar los comandos anteriores. Resultados de validación en el plan.
 

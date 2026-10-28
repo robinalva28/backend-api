@@ -4,7 +4,7 @@ Este documento concentra el estado, decisiones y planificación. Las propuestas 
 
 ## Etapa vigente y restricciones
 
-Etapa actual: B04-A/B04-A-R1 aceptados y versionados en `e57de25`. B04-B/R1/R2 aceptados tras revisión independiente del 2026-10-28 con tipos de pruebas y 197 pruebas aprobadas. La segunda ejecución de la migración compara la firma canónica exacta de las constraints, sin normalizar literales, y verifica sus columnas y estado de validación; rechaza variantes no soportadas. La migración es aditiva sobre `orders`, conserva el histórico y no completa la idempotencia. El usuario autorizó un único commit local de B04-B/R1/R2; no autorizó publicación ni commits posteriores. Los pendientes de estructura semántica completa, comparación, recuperación, reintentos y timeouts siguen separados de esta aprobación. El detalle y la evidencia están en [Implementación y validación B04-B](#implementación-y-validación-b04-b), [Corrección B04-B-R1](#corrección-b04-b-r1--firma-efectiva-de-constraints) y [Corrección B04-B-R2](#corrección-b04-b-r2--literales-preservados).
+Etapa actual: B04-A/B04-A-R1 aceptados y versionados en `e57de25`; B04-B/R1/R2 aceptados y versionados en `35f87f4`. B04-C aceptado tras revisión independiente del 2026-10-28 con tipos de aplicación/pruebas, build y 172 unitarias aprobadas. El componente puro representa la intención original, normaliza decimales y compara metadatos v1; no implementa HTTP, persistencia, recuperación ni reintentos. El usuario autorizó un único commit local de B04-C, sin publicación ni commits posteriores. La suite unitaria quedó en 172 pruebas; integración y HTTP no se repitieron porque el bloque no cambia esas capas. Los pendientes de sintaxis HTTP, compatibilidad futura, recuperación, reintentos y timeouts siguen abiertos. El detalle está en [Implementación y validación B04-C](#implementación-y-validación-b04-c).
 
 B03/B03-R1 aceptados tras revisión independiente del 2026-10-28: se confirmó la selección por la columna `DATE` nativa (`marketdata.date DESC, marketdata.id DESC`) y la regresión PostgreSQL con `9999-12-31` y `10000-01-01`. Tipos y build correctos, 80 pruebas unitarias sin base activa y 142 pruebas de la suite completa aprobadas con Node 24.22.1. El usuario autorizó un único commit local de B03: `feat(quotes): read latest instrument quote`. La aceptación cubre lectura y selección, sin cerrar F07/Q06 ni AC26–AC28; no hay autorización de publicación ni commits adicionales.
 
@@ -63,9 +63,9 @@ Decisiones confirmadas por el usuario durante la revisión funcional. Son elecci
 
 **Cierre parcial D05 del 2026-10-27:** UUID en `Idempotency-Key`, usuario en ruta, entradas estructuralmente inválidas sin orden y comparación de valores decimales normalizados después de validar: `10`, `10.0` y `10.00` son equivalentes si sus representaciones son válidas. La aprobación posterior de las secuencias confirma GET `/users/:userId/portfolio`, POST `/users/:userId/orders` y códigos de envío 201/200/409; los demás detalles de contrato siguen pendientes en el spec.
 
-**Alternativa A seleccionada:** UUID tipado y parámetros normalizados comparados directamente en `orders`, UNIQUE por usuario/UUID y bloqueo por cuenta; sin hash, caché, cola ni tabla adicional. Se mantienen los reintentos acordados; no se adopta delegarlos al cliente ni omitir la comparación. La aprobación posterior de B04-B seleccionó UUID y JSONB versionado; la estructura semántica completa y los detalles de contrato restantes siguen abiertos. READ COMMITTED fue aprobado posteriormente para B04-A, sin fijar la lectura consistente de portfolio.
+**Alternativa A seleccionada:** UUID tipado y parámetros normalizados comparados directamente en `orders`, UNIQUE por usuario/UUID y bloqueo por cuenta; sin hash, caché, cola ni tabla adicional. Se mantienen los reintentos acordados; no se adopta delegarlos al cliente ni omitir la comparación. La aprobación posterior de B04-B seleccionó UUID y JSONB versionado; B04-C definió la estructura semántica v1 y su comparación. Los detalles de contrato restantes y la compatibilidad entre versiones siguen abiertos. READ COMMITTED fue aprobado posteriormente para B04-A, sin fijar la lectura consistente de portfolio.
 
-**Pendientes técnicos de este acuerdo:** estructura semántica completa de los parámetros originales normalizados y respuesta de recuperación/conflicto. B04-B ya tiene aprobados UUID y JSONB versionado, migración aditiva compatible con filas históricas sin UUID, presencia conjunta de clave/metadatos y unicidad por usuario/UUID; la migración y sus correcciones fueron implementadas, validadas y aceptadas tras revisión independiente. Precisar errores reintentables, esperas entre intentos y límites para adquirir conexión, esperar bloqueos, ejecutar y completar todos los intentos. No se han aprobado valores de timeout ni la espera creciente con variación aleatoria. READ COMMITTED explícito con bloqueo y lecturas posteriores separadas fue confirmado para B04-A el 2026-10-28 y está implementado, revisado y aceptado en B04-A/B04-A-R1. El [análisis de casos límite y alternativas](backend-features.spec#análisis-de-casos-límite-y-consistencia) no revoca las garantías aprobadas.
+**Pendientes técnicos de este acuerdo:** implementar la respuesta pública de recuperación/conflicto y cerrar sintaxis HTTP, compatibilidad futura y límites. B04-C ya implementó el modelo semántico v1 y la comparación interna; no implementó HTTP ni recuperación. B04-B ya tiene aprobados UUID y JSONB versionado, migración aditiva compatible con filas históricas sin UUID, presencia conjunta de clave/metadatos y unicidad por usuario/UUID; la migración y sus correcciones fueron implementadas, validadas y aceptadas tras revisión independiente. Precisar errores reintentables, esperas entre intentos y límites para adquirir conexión, esperar bloqueos, ejecutar y completar todos los intentos. No se han aprobado valores de timeout ni la espera creciente con variación aleatoria. READ COMMITTED explícito con bloqueo y lecturas posteriores separadas fue confirmado para B04-A el 2026-10-28 y está implementado, revisado y aceptado en B04-A/B04-A-R1. El [análisis de casos límite y alternativas](backend-features.spec#análisis-de-casos-límite-y-consistencia) no revoca las garantías aprobadas.
 
 **Validación prevista del acuerdo:** comprobar reintentos concurrentes con el mismo UUID, UUID diferentes con iguales parámetros, conflicto por parámetros distintos, recuperación después de una respuesta perdida y de un reinicio, y rechazo persistido aun después de cambiar la disponibilidad. Verificar que operaciones de una cuenta respeten el bloqueo sin serializar globalmente todas las cuentas. Son comprobaciones futuras; no hay pruebas implementadas ni ejecutadas de estos comportamientos.
 
@@ -135,7 +135,7 @@ No corregir los datos ni resolver estos puntos incorporando reglas de los otros 
 | D01 | Valoración y costo promedio móvil aprobados para historias válidas; quedan desempates, posiciones vacías, denominadores inválidos y precisión de divisiones/presentación. | Cerrar Q01/Q03 del spec. Mantener separado el retorno diario; su fórmula/exposición se completa con D07. No extrapolar el costo móvil a D03 sin una decisión. |
 | D03 | El ejemplo contiene una venta FILLED que deja una tenencia negativa. Ocultarla o ajustar el seed falsearía los datos y el costo/rendimiento no puede inferirse con seguridad. | Mantener los datos, mostrar la cantidad neta real y definir representación de costo/rendimiento no calculable. Confirmar cómo informar la inconsistencia; no asumir soporte para ventas en corto ni permitir nuevas ventas sin acciones. |
 | D04 | Reglas de cantidad/monto y escala aceptadas; quedan sintaxis decimal, ceros finales extra, rangos y redondeo de presentación. | Cerrar Q02/Q03 del spec sin reabrir las reglas confirmadas. Mantener coherencia entre valores validados y persistidos; riesgos de redondeo en el follow-up del README. |
-| D05 | Alternativa A, rutas de portfolio/envío y códigos 201/200/409 confirmados, además de header, comparación, bloqueo y READ COMMITTED explícito para B04-A. | Cerrar Q04: payloads, errores restantes, estructura semántica completa de metadatos, compatibilidad y límites/reintentos. Las opciones B/C no se adoptan; no se elimina comparación, bloqueo o reintentos. B04-A/B04-A-R1 implementó la unidad transaccional de un intento; B04-B preparó la migración aditiva con UUID/JSONB versionado, nulos históricos, presencia conjunta y unicidad por usuario/clave. La lectura consistente de portfolio sigue sin definirse. |
+| D05 | Alternativa A, rutas de portfolio/envío y códigos 201/200/409 confirmados, además de header, comparación, bloqueo y READ COMMITTED explícito para B04-A. | Cerrar Q04: payloads, errores HTTP restantes, compatibilidad entre versiones, recuperación y límites/reintentos. Las opciones B/C no se adoptan; no se elimina comparación, bloqueo o reintentos. B04-A/B04-A-R1 implementó la unidad transaccional de un intento; B04-B preparó la migración aditiva con UUID/JSONB versionado, nulos históricos, presencia conjunta y unicidad por usuario/clave; B04-C implementó el modelo de intención v1, normalización y comparación. La lectura consistente de portfolio sigue sin definirse. |
 | D07 | Selección fecha/id, sin reemplazo anterior, null para retorno diario sin base, error completo si falta close y mensajes genéricos confirmados. | Cerrar F07/Q06: fórmula/validaciones concretas, ausencia de fila para MARKET no procesable, nombre del campo diario y códigos/cuerpo técnico. ARS no necesita cotización. No reabrir las reglas confirmadas. |
 | D08 | Endpoint, ruta/método, repetición 200 sin efectos, conflicto 409, entrada inválida 400, mismo 404 para orden inexistente/ajena y replay actual confirmados. | Cerrar F08/Q07: proyección de salida, validación concreta, usuario inexistente y mensajes. No reabrir órdenes ni duplicar reservas con el mismo UUID. Transferencias existentes sin API de creación. |
 
@@ -143,9 +143,9 @@ B01/D06 ya no figura en esta tabla: fue implementado y validado; el detalle est�
 
 ## Tareas futuras y dependencias
 
-La preparación inicial está versionada y la base técnica de T02 está validada. Stack, arquitectura, idempotencia, concurrencia y reservas D02 están definidos; D01/D04/D05 tienen reglas aceptadas y preguntas residuales en el spec. D06/Q05 está cerrado e implementado en B01; B02 cubrió la lectura y el cálculo base de T03, sin costo, valoración ni precios. B03 agregó la lectura base de última cotización, todavía sin cálculos ni consumidores. B04-A/B04-A-R1 agregó la unidad transaccional por cuenta, sin envío de órdenes, idempotencia ni reintentos. B04-B agregó la migración aditiva de identidad idempotente en `orders`, sin comparación, recuperación ni escritura de órdenes. D03 y los contratos residuales de D07–D08 siguen abiertos. El diseño de cancelación ya está incluido. T05, T06 y la parte de portfolio de T04 no están implementadas.
+La preparación inicial está versionada y la base técnica de T02 está validada. Stack, arquitectura, idempotencia, concurrencia y reservas D02 están definidos; D01/D04/D05 tienen reglas aceptadas y preguntas residuales en el spec. D06/Q05 está cerrado e implementado en B01; B02 cubrió la lectura y el cálculo base de T03, sin costo, valoración ni precios. B03 agregó la lectura base de última cotización, todavía sin cálculos ni consumidores. B04-A/B04-A-R1 agregó la unidad transaccional por cuenta, sin envío de órdenes, idempotencia ni reintentos. B04-B agregó la migración aditiva de identidad idempotente en `orders`, sin comparación, recuperación ni escritura de órdenes. B04-C agregó el modelo puro de intención v1, normalización y comparación, sin HTTP, persistencia ni ejecución. D03 y los contratos residuales de D07–D08 siguen abiertos. El diseño de cancelación ya está incluido. T05, T06 y la parte de portfolio de T04 no están implementadas.
 
-Coordinación SDD: B01-R1 y B02/B02-R1 fueron aceptados y versionados localmente. El usuario autorizó los commits locales de B03/B03-R1 y B04-A/B04-A-R1; B04-A quedó en `e57de25`. Se conserva Vitest; no hay autorización de publicación. B04-B/R1/R2 fueron aceptados tras revisión independiente; el usuario autorizó su único commit local, sin publicación. Q04 conserva decisiones abiertas sobre estructura semántica completa, comparación, recuperación y límites; B04-B no las cierra.
+Coordinación SDD: B01-R1 y B02/B02-R1 fueron aceptados y versionados localmente. El usuario autorizó los commits locales de B03/B03-R1, B04-A/B04-A-R1 y B04-B/R1/R2; B04-A quedó en `e57de25` y B04-B en `35f87f4`. Se conserva Vitest; no hay autorización de publicación. B04-C fue aceptado tras revisión independiente; el usuario autorizó su único commit local, sin publicación. Q04 conserva decisiones abiertas sobre HTTP, compatibilidad entre versiones, recuperación y límites; B04-C no las cierra.
 
 B04-A aprobado por el usuario el 2026-10-28: puerto y adapter transaccional por cuenta con READ COMMITTED explícito, bloqueo inicial del usuario, lecturas posteriores en statements separados y un mismo cliente pg. El bloque realiza un intento y verifica el ciclo de vida, cliente compartido y concurrencia por cuenta; no implementa todavía migración/metadatos de idempotencia, política automática de reintentos ni nuevos timeouts. Estos elementos deberán completarse antes del envío de órdenes y la partición no elimina las garantías previas. Puerto y contexto independientes de pg/SQL/Nest/HTTP; composición de adapters ligados al cliente en infraestructura. B04-A se implementó y validó localmente el 2026-10-28; B04-A-R1 corrigió la confirmación efectiva de COMMIT y la limpieza concurrente. Detalle en [Implementación y validación B04-A](#implementación-y-validación-b04-a) y [Corrección B04-A-R1](#corrección-b04-a-r1--confirmación-efectiva-y-limpieza). B04-A/B04-A-R1 aceptados tras revisión independiente; el usuario autorizó el único commit local del bloque, materializado en `e57de25`. B04-B fue implementado y validado localmente después; ver [Implementación y validación B04-B](#implementación-y-validación-b04-b). No hay autorización de commit ni publicación de B04-B.
 
@@ -160,7 +160,7 @@ Bloque B02 implementado y corregido en B02-R1: cálculo interno de efectivo cont
 | T02 — Base técnica y datos | Stack aprobado de T01 | Bootstrap, dependencias y Dockerfile/Compose preparados. Validar ejecución local y seed sin editar; la conexión pg y el contrato de errores de búsqueda están implementados en B01. B04-A agregó la unidad transaccional y B04-B la migración aditiva de identidad en `orders`; transacciones y errores de los demás CDU siguen pendientes. Conservar el SQL original. |
 | T03 — Consultas contables y de mercado | T02; D01–D03, D07 | B02 implementó tenencias ejecutadas, cash contable, reservas NEW, disponibilidad y la lectura pg por cuenta. B03 implementó la lectura pg de la última fila de cotización por instrumento, sin cálculos ni consumidores. Quedan costo, valoración, retorno diario, consumidores y el tratamiento público del seed inconsistente. Base compartida por portfolio y órdenes. |
 | T04 — Portfolio y búsqueda | T03 para portfolio; T02 para búsqueda; D05/D06 | Búsqueda R02 implementada y validada en B01. Portfolio R01 continúa pendiente de T03 y del cierre de D01/D03/D07. |
-| T05 — Envío de órdenes y test funcional | T03; D02/D04/D05/D07; acuerdo de idempotencia y concurrencia | BUY/SELL, MARKET/LIMIT, cantidad/monto, persistencia de FILLED/NEW/REJECTED y actualización observable. Incorporar UUID por operación, unicidad por usuario, comparación de parámetros originales, bloqueo inicial y política de reintentos acordada. Incluir el test funcional de R14 y verificar el acuerdo de idempotencia; casos adicionales de insuficiencia y conversión según riesgo, sin inventar cobertura porcentual obligatoria. |
+| T05 — Envío de órdenes y test funcional | T03; D02/D04/D05/D07; acuerdo de idempotencia y concurrencia | BUY/SELL, MARKET/LIMIT, cantidad/monto, persistencia de FILLED/NEW/REJECTED y actualización observable. Incorporar UUID por operación, unicidad por usuario, comparación de parámetros originales, bloqueo inicial y política de reintentos acordada. B04-C ya aporta el modelo puro de intención v1 y comparación; falta el CDU de envío. Incluir el test funcional de R14 y verificar el acuerdo de idempotencia; casos adicionales de insuficiencia y conversión según riesgo, sin inventar cobertura porcentual obligatoria. |
 | T06 — Cancelación independiente | T02; reservas D02 y protocolo D05; contrato D08 | Alcance de diseño incluido. Implementar cuando se autorice, con CDU propio y puertos compartidos, sin llamar al CDU de envío. Verificar estados, reservas, pertenencia y concurrencia/reenvíos junto con T05. |
 | T07 — Validación y documentación de entrega | T04/T05/T06 | Ejecutar pruebas existentes, contrastar R01–R15 y documentar comandos reales, decisiones y resultados. Añadir O01 solo si se elige. Revisar privacidad y diff; preparar propuesta de commit(s) para autorización. |
 | T08 — Publicación y PR futuros | T07; autorizaciones separadas | Confirmar repositorio destino y base main; revisar rama y commits aprobados, publicar solo con permiso explícito y abrir PR solo cuando esté autorizado. No hacer merge por inferencia. |
@@ -186,7 +186,9 @@ Autorización posterior del 2026-10-28: un único commit local de B03/B03-R1, ya
 
 B04-A fue implementado y validado localmente por el modelo externo. B04-A-R1 corrigió la confirmación efectiva de COMMIT y la limpieza del test concurrente. El usuario autorizó un único commit local de este bloque, sin publicación; la revisión independiente de aceptación ya se completó sin nuevos hallazgos y el commit quedó en `e57de25`. La política de hasta tres reintentos y la recuperación idempotente no se implementaron en B04-A.
 
-B04-B fue implementado y validado localmente, sin commit ni publicación. La autorización de B04-A no se extiende a este bloque; la revisión independiente aceptó B04-B/R1/R2.
+B04-B fue implementado y validado localmente. El usuario autorizó su único commit local en `35f87f4`, sin publicación; la autorización no se extiende a otros bloques.
+
+B04-C fue implementado y validado localmente, sin commit ni publicación. La autorización de B04-B no se extiende a este bloque; la revisión independiente aceptó B04-C dentro de su alcance puro.
 
 El usuario autorizó el commit `docs: prepare backend challenge setup`, realizado como `57c518e` con los diez archivos del setup y sin `.DS_Store`. Esa autorización ya fue utilizada y no habilita otros commits, push, PR ni merge. La solicitud posterior de continuar con la implementación se trata con el alcance definido al inicio de este plan. Las reglas de commits atómicos y autorizaciones independientes permanecen vigentes.
 
@@ -655,11 +657,103 @@ Revisión finalizada el 2026-10-28 sin nuevos hallazgos dentro del alcance aprob
 
 Validación independiente ejecutada con Node 24.22.1: tipos de pruebas y suite completa con PostgreSQL 18.6 aislado, 197 pruebas aprobadas en 20 archivos (98 unitarias, 68 de integración y 31 HTTP). No se repitieron tipos/build de aplicación porque no hubo cambios pertinentes en código, configuración o dependencias. Consigna y SQL original sin cambios. La huella del contenido de todas las filas de las cuatro tablas coincidió antes y después de la suite; no incluye secuencias. Estado final: 4 usuarios, 66 instrumentos, 11 órdenes, 126 cotizaciones y ninguna columna B04-B persistida. Se retiró únicamente el contenedor `db-test` creado para esta revisión; no se aplicó la migración a desarrollo.
 
-B04-B/R1/R2 aceptados como migración aditiva de identidad idempotente. No completan comparación, recuperación, reintentos ni envío de órdenes. Durante la revisión no se modificaron SQL ni pruebas, solo documentación y registro. El usuario autorizó un único commit local de los seis archivos de migración, integración y documentación, con mensaje `feat(database): add order idempotency migration`. La autorización se limita a ese commit y no habilita publicación ni commits de bloques posteriores. El siguiente trabajo del coordinador es preparar un único prompt B04-C, sin implementar código directamente.
+B04-B/R1/R2 aceptados como migración aditiva de identidad idempotente. No completan comparación, recuperación, reintentos ni envío de órdenes. Durante la revisión no se modificaron SQL ni pruebas, solo documentación y registro. El usuario autorizó un único commit local de los seis archivos de migración, integración y documentación, con mensaje `feat(database): add order idempotency migration`. La autorización se limitó a ese commit, materializado en `35f87f4`, y no habilita publicación ni commits de bloques posteriores. El trabajo posterior fue B04-C, implementado y validado localmente más abajo.
 
-### Preparación de B04-C
+### B04-C — alcance y contrato interno aprobados
 
-Se propone limitar B04-C al modelo interno de intención, normalización y comparación, sin HTTP, consultas/escrituras, recuperación ni reintentos. Metadatos versión 1 con instrumento, side, tipo, modo cantidad/monto y valor original, incluyendo precio solo para LIMIT. Cantidad y decimales como strings canónicos sin exponente ni redondeo. La equivalencia decimal de representaciones válidas ya está aprobada; se conserva la distinción entre modos. Se consulta al usuario la adopción de este alcance y el error interno ante metadatos persistidos inválidos o de versión desconocida, sin convertirlos en coincidencia/conflicto o permiso de crear otra orden. No se implementa antes de recibir esa definición ni se cierra la sintaxis HTTP de Q02.
+El usuario confirmó continuar el 2026-10-28 tras revisar el contrato propuesto y su contraste con la consigna. Se aprueba B04-C limitado al modelo interno de intención, normalización y comparación, sin HTTP, consultas/escrituras, recuperación ni reintentos.
+
+- Metadatos versión 1: instrumento, BUY/SELL, MARKET/LIMIT, modo cantidad/monto y valor original; incluir precio solicitado solo para LIMIT. No incorporar close de ejecución MARKET, cantidad derivada por conversión, estado actual o disponibilidad como parte de la intención original.
+- Cantidad y decimales se representan como strings canónicos sin exponente ni redondeo. Representaciones decimales válidas como `10`, `10.0` y `10.00` son equivalentes; modo size y modo amount siguen siendo intenciones distintas. Se valida antes de normalizar, sin convertir entradas inválidas en válidas.
+- Metadatos persistidos inválidos o versión desconocida generan error interno, no coincidencia/conflicto de intención ni permiso de crear otra orden. La traducción HTTP queda abierta.
+- Nombres y firmas concretas serán decisiones técnicas de implementación, conservando el contenedor mínimo de B04-B (`version` y `parameters`). No se cierra sintaxis HTTP, rangos nuevos, precisión de divisiones o redondeo de presentación. No se añade un framework de versionado ni nuevos CDU públicos.
+
+Contraste funcional: instrumento, BUY/SELL, MARKET/LIMIT, cantidad o monto y precio LIMIT proceden de la consigna. Idempotencia, conservación de intención, comparación normalizada y JSONB versionado son agregados aprobados. El usuario adoptó después del contraste la estructura semántica de v1, cantidad como string canónico y política de error interno. La partición B04-C no sustituye la API ni el test funcional de envío exigidos.
+
+B04-C quedó implementado y validado localmente el 2026-10-28. El componente, sus contratos, pruebas y límites se detallan en [Implementación y validación B04-C](#implementación-y-validación-b04-c). No hay autorización de implementación directa al coordinador ni publicación de B04-C; el usuario autorizó su único commit local. B04-B quedó versionado localmente en `35f87f4`; su autorización de commit está consumida.
+
+## Implementación y validación B04-C
+
+Implementación autorizada por el prompt B04-C el 2026-10-28, limitada al modelo puro de intención, normalización y comparación. No se implementaron endpoints, DTOs HTTP, consultas, escrituras, conversión de amount, ejecución, recuperación ni reintentos. No se modificaron dependencias, `database.sql`, efectivo, tenencias ni reservas. No se hizo commit, push, PR ni merge.
+
+### Contratos y decisiones técnicas
+
+- `src/orders/domain/order-intent.ts`: `createOrderIntent(input)` valida y devuelve `OrderIntent`; `orderIntentsEqual(left, right)` compara campos semánticos explícitos.
+- `src/orders/domain/order-intent-metadata.ts`: `buildOrderIntentMetadata(intent)` construye `OrderIntentMetadataV1`; `readOrderIntentMetadata(value)` valida y reconstruye la intención.
+- `src/orders/domain/order-intent.error.ts`: `OrderIntentError` con códigos internos para entrada inválida, metadatos inválidos y versión desconocida.
+- `OrderIntent` contiene `instrumentId`, `side`, `type`, `mode`, `size`, `amount` y `limitPrice`. `limitPrice` es obligatorio y no nulo solo para LIMIT; MARKET no conserva close, cantidad derivada, estado, disponibilidad ni reservas.
+- `size` y `amount` son modos distintos y excluyentes. La comparación incluye el modo y el valor original; no se usa cantidad derivada por conversión.
+- Los decimales se validan y normalizan como strings canónicos sin exponente ni redondeo. `10`, `10.0` y `10.00` producen `"10"`. La escala monetaria efectiva se limita a dos decimales; los ceros finales escritos y la sintaxis léxica HTTP no se deciden aquí.
+- `decimal.js` se usa con una configuración local derivada de cada valor; no se modifica la configuración global ni se convierten importes a `Number`. Se conservan valores grandes exactos.
+- Metadatos v1:
+  ```json
+  {
+    "version": 1,
+    "parameters": {
+      "instrumentId": 47,
+      "side": "BUY",
+      "type": "LIMIT",
+      "mode": "size",
+      "size": "10",
+      "limitPrice": "10.1"
+    }
+  }
+  ```
+  El campo del modo no elegido y `limitPrice` en MARKET se omiten. La lectura acepta ausencia o `null` en esos campos no aplicables, pero rechaza valores no nulos, tipos incorrectos, versión desconocida y metadatos incompletos.
+- `readOrderIntentMetadata` no compara ni decide coincidencia/conflicto: ante metadatos inválidos o versión desconocida lanza `OrderIntentError`. La traducción HTTP queda fuera del bloque.
+- La comparación no serializa el JSON ni depende del orden de propiedades; usa los campos semánticos.
+
+### Pruebas y evidencia
+
+| Garantía | Tipo de prueba | Resultado |
+| --- | --- | --- |
+| Normalización decimal exacta y equivalencia `10`/`10.0`/`10.00` | Unitarias de dominio | Aprobadas |
+| Diferencias de instrumento, side, tipo, modo, valor y precio LIMIT | Unitarias de dominio | Aprobadas |
+| `size` y `amount` distintos aunque compartan valor; montos distintos que podrían convertir a igual cantidad | Unitarias de dominio | Aprobadas |
+| Construcción y lectura v1; campos omitidos; round-trip JSON | Unitarias de metadata | Aprobadas |
+| Orden de propiedades JSON irrelevante | Unitaria de metadata con objeto reordenado | Aprobada |
+| Metadatos incompletos, inválidos, claves alteradas y versión desconocida | Unitarias con códigos internos | Aprobadas |
+| Configuración global de `Decimal` intacta y valores grandes sin `Number` | Unitaria de dominio | Aprobada |
+| Sin close MARKET, cantidad derivada, estado, disponibilidad o reservas en la identidad | Unitaria de estructura del modelo | Aprobada |
+
+Resultados ejecutados con Node 24.22.1:
+
+- `tsc --noEmit -p tsconfig.json`: correcto.
+- `tsc --noEmit -p tsconfig.test.json`: correcto.
+- `tsc -p tsconfig.json`: build correcto.
+- `vitest run --config vitest.unit.config.ts`: 15 archivos y 172 pruebas. B04-C aporta 74 unitarias nuevas.
+
+No se repitieron integración PostgreSQL ni HTTP porque el bloque no modifica persistencia, red ni infraestructura; conservan sus últimas 68 y 31 pruebas, respectivamente. No se utilizaron servicios externos para esta validación.
+
+### Limitaciones y decisiones abiertas
+
+- B04-C aceptado tras revisión independiente; el usuario autorizó su único commit local, sin publicación.
+- Q02/Q03 y los contratos HTTP restantes siguen abiertos: sintaxis pública, exponentes de entrada, ceros finales escritos, rangos nuevos, divisiones y redondeo de presentación. El componente recibe valores semánticos y no define esas reglas de transporte.
+- Solo se soporta metadatos v1. No se añade un framework de versiones ni compatibilidad entre versiones futuras.
+- No hay endpoint, DTO, repositorio, transacción, envío, recuperación, reintentos ni persistencia en este bloque. Los errores internos no tienen todavía traducción HTTP.
+- La comparación y normalización no modifican efectivo, tenencias, reservas ni órdenes existentes.
+
+### Aceptación independiente B04-C
+
+Revisión finalizada el 2026-10-28 sin hallazgos que impidan aceptar el componente dentro de su alcance aprobado. Se inspeccionaron los tres archivos de dominio y las dos suites nuevas por separado de la evidencia recibida. Se verificaron validación semántica, normalización decimal exacta, comparación de los modelos canónicos por campos, distinción entre modos y monto original, construcción/lectura v1, errores internos y ausencia de dependencias Nest/HTTP/SQL.
+
+Validación independiente ejecutada con Node 24.22.1: tipos de aplicación y pruebas, build y suite unitaria con `TEST_PGDATABASE=blocked_for_unit_tests` y PostgreSQL inactivo: 172 pruebas aprobadas en 15 archivos, incluidas las 74 nuevas. No se repitieron integración PostgreSQL ni HTTP: el código de aplicación existente, adapters, migración, dependencias, consigna y SQL original permanecen sin cambios respecto de HEAD; se agregan únicamente los modelos puros y sus unitarias. La última suite completa efectivamente ejecutada sigue siendo la de B04-B, con 197 pruebas; no se presenta una suma de grupos como una nueva ejecución completa.
+
+B04-C aceptado como componente puro para construir, leer y comparar intención original v1. Los consumidores deberán usar las funciones de construcción/lectura para obtener los modelos canónicos que compara `orderIntentsEqual`; no se acredita validación HTTP, lookup por clave, persistencia, recuperación ni reintentos. Q02/Q03 y los contratos públicos pendientes conservan su estado.
+
+Durante la revisión solo se actualizaron documentación y registro; no se modificaron código ni pruebas. El usuario autorizó un único commit local de los nueve archivos de dominio, pruebas y documentación con mensaje `feat(orders): model and compare original order intent`. La autorización se limita a ese commit; no habilita publicación ni commits posteriores. El siguiente trabajo del coordinador es entregar un único prompt B04-D, sin implementar código directamente.
+
+### B04-D — Lectura y resolución interna de reenvíos
+
+Siguiente bloque seleccionado para el prompt externo: puerto de lectura por usuario/UUID, adapter PostgreSQL ligado al cliente transaccional y resolución interna de ausencia/coincidencia/conflicto usando B04-C. Implementa una parte de las garantías de F05 ya aprobadas; no introduce otro CDU público ni define la respuesta HTTP.
+
+- La lectura debe ejecutarse después del bloqueo del usuario y con el mismo cliente de B04-A. El componente debe poder continuar dentro de ese callback: no cerrar una transacción de consulta para crear luego en otra basándose en una ausencia ya obsoleta.
+- Consultar por usuario y UUID, sin filtrar estados. Una coincidencia recupera la orden en su estado persistido actual, incluido CANCELLED; no la reabre, revalida disponibilidad, obtiene una cotización nueva ni cambia efectos.
+- Comparar la intención original mediante el lector y comparador de B04-C. Diferencias válidas producen conflicto interno; metadatos inválidos, versión desconocida o fallo técnico producen error interno, nunca ausencia ni autorización de crear otra orden.
+- La ausencia solo informa que no se encontró la clave bajo el bloqueo actual. B04-D no implementa creación de órdenes de producción, ejecución, cancelación, recuperación de COMMIT incierto, reintentos, timeouts o endpoints. No completa por sí solo la idempotencia.
+- Los nombres, firmas y modelo interno de orden leída se definirán técnicamente al implementar. No fijar proyección HTTP ni decisiones pendientes de Q02/Q03/Q04/Q06/Q07. Validación: unitarias aisladas del adapter/componente y PostgreSQL real aislado para consulta, estado actual, cliente y bloqueo; preservar el esquema original que requieren las suites anteriores.
+
+Estado: prompt preparado, implementación externa pendiente; no hay autorización de implementación directa al coordinador, commit o publicación de B04-D.
 
 ## Revisión del diseño de alto nivel
 
