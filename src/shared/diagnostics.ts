@@ -14,6 +14,7 @@ const SAFE_ERROR_NAMES = new Set([
   'URIError',
   'AggregateError',
   'SearchInstrumentsError',
+  'SubmitOrderError',
   'AccountTransactionError',
   'TimeoutError',
   'AbortError',

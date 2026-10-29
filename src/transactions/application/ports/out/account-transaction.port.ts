@@ -1,3 +1,4 @@
+import type { InstrumentReader } from '../../../../instruments/application/ports/out/instrument-reader.js';
 import type { LatestQuoteRepository } from '../../../../quotes/application/ports/out/latest-quote.repository.js';
 import type { PersistedOrderRepository } from '../../../../orders/application/ports/out/persisted-order.repository.js';
 import type { PreparedOrderRepository } from '../../../../orders/application/ports/out/prepared-order.repository.js';
@@ -9,6 +10,7 @@ import type { AccountMovementRepository } from '../../../../resources/applicatio
  */
 export interface AccountTransactionContext {
   readonly userId: number;
+  readonly instruments: InstrumentReader;
   readonly accountMovements: AccountMovementRepository;
   readonly latestQuotes: LatestQuoteRepository;
   readonly persistedOrders: PersistedOrderRepository;

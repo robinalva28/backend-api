@@ -49,6 +49,17 @@ describe('sanitizeDiagnostic', () => {
     expect(output).not.toContain('secret-value');
   });
 
+  it('recognizes the submit order error name without exposing its message', () => {
+    const error = Object.assign(new Error('password=secret-value'), {
+      name: 'SubmitOrderError',
+    });
+
+    const output = sanitizeDiagnostic(error, 'order-submission');
+
+    expect(output).toContain('SubmitOrderError: error message redacted');
+    expect(output).not.toContain('secret-value');
+  });
+
   it('maps known SQLSTATE codes and rejects invalid metadata', () => {
     const known = Object.assign(new Error('duplicate value'), {
       name: 'QueryError',
