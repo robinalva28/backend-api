@@ -443,6 +443,193 @@ describe('PostgresAccountTransactionRunner', () => {
     expect(client.releases).toEqual([true]);
   });
 
+  it('classifies a serialization failure during the lock after a successful rollback', async () => {
+    const failure = sqlStateError('40001');
+    const client = new FakePostgresClient({ lockError: failure });
+    const runner = new PostgresAccountTransactionRunner(createPool([client]));
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn());
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'lock',
+      commitOutcome: 'not-attempted',
+      clientDisposition: 'released',
+      rollbackError: undefined,
+      transientFailure: 'serialization-failure',
+    });
+    expect(caught?.releaseError).toBeUndefined();
+    expect(transactionQueryCalls(client).map(({ text }) => text)).toEqual([
+      expect.stringMatching(/^BEGIN TRANSACTION/),
+      LOCK_SQL,
+      'ROLLBACK',
+    ]);
+  });
+
+  it('classifies a deadlock during work after a successful rollback', async () => {
+    const failure = sqlStateError('40P01');
+    const client = new FakePostgresClient({ lockRows: [{ id: 7 }] });
+    const runner = new PostgresAccountTransactionRunner(createPool([client]));
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn().mockRejectedValue(failure));
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'work',
+      commitOutcome: 'not-attempted',
+      clientDisposition: 'released',
+      rollbackError: undefined,
+      transientFailure: 'deadlock',
+    });
+    expect(client.releases).toEqual([undefined]);
+  });
+
+  it('does not classify other SQLSTATE codes as transient', async () => {
+    const client = new FakePostgresClient({ lockRows: [{ id: 7 }] });
+    const runner = new PostgresAccountTransactionRunner(createPool([client]));
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn().mockRejectedValue(sqlStateError('23505')));
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'work',
+      transientFailure: undefined,
+      rollbackError: undefined,
+      clientDisposition: 'released',
+    });
+  });
+
+  it('does not classify a transient SQLSTATE when rollback fails', async () => {
+    const failure = sqlStateError('40001');
+    const rollbackFailure = new Error('rollback failed');
+    const client = new FakePostgresClient({
+      lockRows: [{ id: 7 }],
+      rollbackError: rollbackFailure,
+    });
+    const runner = new PostgresAccountTransactionRunner(createPool([client]));
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn().mockRejectedValue(failure));
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'work',
+      transientFailure: undefined,
+      rollbackError: rollbackFailure,
+      clientDisposition: 'discarded',
+    });
+  });
+
+  it('does not expose a transient failure when releasing the client fails', async () => {
+    const failure = sqlStateError('40P01');
+    const releaseFailure = new Error('release failed');
+    const client = new FakePostgresClient({
+      lockRows: [{ id: 7 }],
+      releaseError: releaseFailure,
+    });
+    const runner = new PostgresAccountTransactionRunner(createPool([client]));
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn().mockRejectedValue(failure));
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'work',
+      transientFailure: undefined,
+      releaseError: releaseFailure,
+      clientDisposition: 'unknown',
+    });
+  });
+
+  it('does not classify transient SQLSTATE codes from a connection failure', async () => {
+    const failure = sqlStateError('40001');
+    const runner = new PostgresAccountTransactionRunner({
+      connect: vi.fn().mockRejectedValue(failure),
+    });
+
+    let caught: AccountTransactionError | undefined;
+
+    try {
+      await runner.run(7, vi.fn());
+    } catch (error) {
+      caught = error as AccountTransactionError;
+    }
+
+    expect(caught).toMatchObject({
+      stage: 'connection',
+      transientFailure: undefined,
+      commitOutcome: 'not-attempted',
+      clientDisposition: 'not-acquired',
+    });
+  });
+
+  it('does not classify transient SQLSTATE codes from BEGIN or COMMIT', async () => {
+    const beginClient = new FakePostgresClient({
+      beginError: sqlStateError('40001'),
+    });
+    const beginRunner = new PostgresAccountTransactionRunner(
+      createPool([beginClient]),
+    );
+    let beginError: AccountTransactionError | undefined;
+
+    try {
+      await beginRunner.run(7, vi.fn());
+    } catch (error) {
+      beginError = error as AccountTransactionError;
+    }
+
+    expect(beginError).toMatchObject({
+      stage: 'begin',
+      transientFailure: undefined,
+      commitOutcome: 'not-attempted',
+    });
+
+    const commitClient = new FakePostgresClient({
+      lockRows: [{ id: 7 }],
+      commitError: sqlStateError('40001'),
+    });
+    const commitRunner = new PostgresAccountTransactionRunner(
+      createPool([commitClient]),
+    );
+    let commitError: AccountTransactionError | undefined;
+
+    try {
+      await commitRunner.run(7, vi.fn().mockResolvedValue('value'));
+    } catch (error) {
+      commitError = error as AccountTransactionError;
+    }
+
+    expect(commitError).toMatchObject({
+      stage: 'commit',
+      transientFailure: undefined,
+      commitOutcome: 'uncertain',
+      clientDisposition: 'discarded',
+    });
+  });
+
   it('does not return a value or claim rollback when COMMIT is uncertain', async () => {
     const failure = new Error('connection lost during commit');
     const client = new FakePostgresClient({
@@ -666,6 +853,10 @@ describe('PostgresAccountTransactionRunner', () => {
 });
 
 const LOCK_SQL = 'SELECT id FROM users WHERE id = $1 FOR UPDATE';
+
+function sqlStateError(code: string): Error {
+  return Object.assign(new Error(`forced SQLSTATE ${code}`), { code });
+}
 
 function queryLabel(text: string): string {
   if (isBegin(text)) {

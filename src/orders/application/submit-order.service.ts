@@ -40,8 +40,10 @@ const SUPPORTED_CURRENCY = 'ARS';
 /**
  * Internal order-submission use case for one transactional attempt. It
  * composes the existing account lock, replay resolution, market quote,
- * resource calculation and prepared-order writer. It does not expose HTTP,
- * retry automatically or infer recovery from an uncertain COMMIT.
+ * resource calculation and prepared-order writer. It does not expose HTTP or
+ * infer recovery from an uncertain COMMIT. The submission composition applies
+ * the bounded transient-failure retry policy around this single-attempt use
+ * case; cancellation keeps using the runner directly.
  */
 export class SubmitOrderService implements SubmitOrderUseCase {
   constructor(

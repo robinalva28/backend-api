@@ -26,6 +26,16 @@ export type AccountTransactionClientDisposition =
   | 'discarded'
   | 'unknown';
 
+/**
+ * Neutral classification of a failure observed before COMMIT. It identifies
+ * the transient condition without exposing SQLSTATE codes or driver messages
+ * to the application. Retry policies must additionally confirm that rollback
+ * and client release succeeded.
+ */
+export type AccountTransactionTransientFailure =
+  | 'serialization-failure'
+  | 'deadlock';
+
 export interface AccountTransactionErrorOptions {
   readonly stage: AccountTransactionStage;
   readonly commitOutcome: AccountTransactionCommitOutcome;
@@ -33,6 +43,7 @@ export interface AccountTransactionErrorOptions {
   readonly cause: unknown;
   readonly rollbackError?: unknown;
   readonly commitCommand?: string;
+  readonly transientFailure?: AccountTransactionTransientFailure;
 }
 
 export class AccountTransactionError extends Error {
@@ -41,6 +52,7 @@ export class AccountTransactionError extends Error {
   clientDisposition: AccountTransactionClientDisposition;
   readonly rollbackError: unknown | undefined;
   readonly commitCommand: string | undefined;
+  transientFailure: AccountTransactionTransientFailure | undefined;
   releaseError: unknown | undefined;
 
   constructor(options: AccountTransactionErrorOptions) {
@@ -53,11 +65,13 @@ export class AccountTransactionError extends Error {
     this.clientDisposition = options.clientDisposition;
     this.rollbackError = options.rollbackError;
     this.commitCommand = options.commitCommand;
+    this.transientFailure = options.transientFailure;
     this.releaseError = undefined;
   }
 
   markReleaseFailed(error: unknown): void {
     this.releaseError = error;
     this.clientDisposition = 'unknown';
+    this.transientFailure = undefined;
   }
 }
