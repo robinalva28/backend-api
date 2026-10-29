@@ -22,6 +22,7 @@ import {
   type PostgresConnectionPool,
   type PostgresTransactionClient,
 } from '../../src/transactions/infrastructure/persistence/postgres-account-transaction.runner.js';
+import { NeverSubmitOrderRecovery } from '../support/never-recovery.js';
 import { testDatabaseConfig } from '../support/test-database.js';
 
 const SCHEMA = 'b06a_test';
@@ -146,9 +147,13 @@ beforeAll(async () => {
   runner = new PostgresAccountTransactionRunner(pool);
   movements = new PostgresAccountMovementRepository(pool);
   cancelService = new CancelOrderService(runner);
-  submitService = new SubmitOrderService(runner, {
-    now: () => new Date(FIXED_DATE),
-  });
+  submitService = new SubmitOrderService(
+    runner,
+    {
+      now: () => new Date(FIXED_DATE),
+    },
+    new NeverSubmitOrderRecovery(),
+  );
 });
 
 afterAll(async () => {
@@ -433,9 +438,13 @@ describe('CancelOrderService against PostgreSQL', () => {
     const cancelGate = new GateAfterLockRunner(runner);
     const cancel = new CancelOrderService(cancelGate);
     const submitStart = new StartingRunner(runner);
-    const submit = new SubmitOrderService(submitStart, {
-      now: () => new Date(FIXED_DATE),
-    });
+    const submit = new SubmitOrderService(
+      submitStart,
+      {
+        now: () => new Date(FIXED_DATE),
+      },
+      new NeverSubmitOrderRecovery(),
+    );
     const cancelPromise = cancel.execute({ userId, orderId: existingId });
     await cancelGate.entered.promise;
 
@@ -469,9 +478,13 @@ describe('CancelOrderService against PostgreSQL', () => {
       type: 'LIMIT',
     });
     const submitGate = new GateAfterLockRunner(runner);
-    const submit = new SubmitOrderService(submitGate, {
-      now: () => new Date(FIXED_DATE),
-    });
+    const submit = new SubmitOrderService(
+      submitGate,
+      {
+        now: () => new Date(FIXED_DATE),
+      },
+      new NeverSubmitOrderRecovery(),
+    );
     const cancelStart = new StartingRunner(runner);
     const cancel = new CancelOrderService(cancelStart);
     const submitPromise = submit.execute({

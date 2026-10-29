@@ -9,6 +9,11 @@ import type { AccountMovementRepository } from '../../src/resources/application/
 import { SubmitOrderService } from '../../src/orders/application/submit-order.service.js';
 import { RetryingSubmitOrderRunner } from '../../src/orders/application/retrying-submit-order.runner.js';
 import { SubmitOrderError } from '../../src/orders/application/errors/submit-order.error.js';
+import type {
+  SubmitOrderRecovery,
+  SubmitOrderRecoveryInput,
+  SubmitOrderRecoveryOutcome,
+} from '../../src/orders/application/ports/out/submit-order-recovery.port.js';
 import type { SubmitOrderInput } from '../../src/orders/application/ports/in/submit-order.use-case.js';
 import {
   buildOrderIntentMetadata,
@@ -31,6 +36,7 @@ import type {
   AccountTransactionResult,
   AccountTransactionRunner,
 } from '../../src/transactions/application/ports/out/account-transaction.port.js';
+import { NeverSubmitOrderRecovery } from '../support/never-recovery.js';
 
 const USER_ID = 5201;
 const KEY = '22222222-2222-4222-8222-222222222222';
@@ -203,6 +209,20 @@ class FailingBeforeCommitRunner implements AccountTransactionRunner {
   }
 }
 
+class RecordingSubmitOrderRecovery implements SubmitOrderRecovery {
+  readonly inputs: SubmitOrderRecoveryInput[] = [];
+
+  constructor(private readonly outcome: SubmitOrderRecoveryOutcome) {}
+
+  async recover(
+    input: SubmitOrderRecoveryInput,
+  ): Promise<SubmitOrderRecoveryOutcome> {
+    this.inputs.push(input);
+
+    return this.outcome;
+  }
+}
+
 function sizeIntent(overrides: Partial<OrderIntentInput> = {}): OrderIntent {
   return createOrderIntent({
     instrumentId: INSTRUMENT_ID,
@@ -300,7 +320,11 @@ function sellNew(size: number, price: string): AccountMovement {
 
 function createService(
   context: AccountTransactionContext,
-  options: { readonly accountExists?: boolean; readonly runner?: AccountTransactionRunner } = {},
+  options: {
+    readonly accountExists?: boolean;
+    readonly runner?: AccountTransactionRunner;
+    readonly recovery?: SubmitOrderRecovery;
+  } = {},
 ): {
   readonly service: SubmitOrderService;
   readonly runnerCalls: () => number;
@@ -310,7 +334,11 @@ function createService(
     options.runner ??
     new FakeRunner(context, options.accountExists ?? true);
   const now = vi.fn(() => new Date(FIXED_DATE));
-  const service = new SubmitOrderService(runner, { now });
+  const service = new SubmitOrderService(
+    runner,
+    { now },
+    options.recovery ?? new NeverSubmitOrderRecovery(),
+  );
 
   return {
     service,
@@ -569,7 +597,7 @@ describe('SubmitOrderService', () => {
       events.push('clock');
       return new Date(FIXED_DATE);
     });
-    const service = new SubmitOrderService(new FakeRunner(context), { now });
+    const service = new SubmitOrderService(new FakeRunner(context), { now }, new NeverSubmitOrderRecovery());
 
     await service.execute(input(intent));
 
@@ -896,6 +924,7 @@ describe('SubmitOrderService', () => {
     const service = new SubmitOrderService(
       new RetryingSubmitOrderRunner(failing, waits),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     );
 
     await expect(service.execute(input(intent))).resolves.toMatchObject({
@@ -941,6 +970,7 @@ describe('SubmitOrderService', () => {
     const replayService = new SubmitOrderService(
       new RetryingSubmitOrderRunner(replayRunner, wait),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     );
 
     await expect(replayService.execute(input(intent))).resolves.toMatchObject({
@@ -963,6 +993,7 @@ describe('SubmitOrderService', () => {
     const rejectedService = new SubmitOrderService(
       new RetryingSubmitOrderRunner(rejectedRunner, wait),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     );
 
     await expect(
@@ -977,6 +1008,7 @@ describe('SubmitOrderService', () => {
     const conflictService = new SubmitOrderService(
       new RetryingSubmitOrderRunner(conflictRunner, wait),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     );
 
     await expectSubmitOrderError(
@@ -987,20 +1019,33 @@ describe('SubmitOrderService', () => {
     expect(wait).not.toHaveBeenCalled();
   });
 
-  it('does not emit success or claim rollback when COMMIT is uncertain', async () => {
+  it('recovers an uncertain COMMIT once with the same user, key and normalized intent', async () => {
     const intent = sizeIntent();
     const { context, spies } = createContext({
       movements: [cashIn(1000)],
     });
-    const { service } = createService(context, {
+    const recoveredOrder = persistedOrder(intent, 'FILLED');
+    const recovery = new RecordingSubmitOrderRecovery({
+      status: 'recovered',
+      order: recoveredOrder,
+    });
+    const { service, now } = createService(context, {
       runner: new UncertainCommitRunner(context),
+      recovery,
     });
 
-    await expect(service.execute(input(intent))).rejects.toMatchObject({
-      stage: 'commit',
-      commitOutcome: 'uncertain',
-      clientDisposition: 'discarded',
+    await expect(service.execute(input(intent))).resolves.toEqual({
+      orderId: recoveredOrder.id,
+      status: 'FILLED',
+      replayed: true,
+    });
+    expect(recovery.inputs).toHaveLength(1);
+    expect(recovery.inputs[0]).toMatchObject({
+      userId: USER_ID,
+      idempotencyKey: KEY,
+      intent,
     });
     expect(spies.insert).toHaveBeenCalledTimes(1);
+    expect(now).toHaveBeenCalledTimes(1);
   });
 });
