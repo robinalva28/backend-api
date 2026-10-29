@@ -5,7 +5,7 @@ import type {
   AccountTransactionRunner,
 } from '../../transactions/application/ports/out/account-transaction.port.js';
 
-const RETRY_DELAYS_MS = [50, 100, 200] as const;
+const RETRY_DELAYS_MS = [50] as const;
 
 export type SubmitOrderRetryDelay = (milliseconds: number) => Promise<void>;
 
@@ -16,10 +16,12 @@ function wait(milliseconds: number): Promise<void> {
 }
 
 /**
- * Submission-only transaction retry policy. It repeats the complete runner
+ * Submission-only transaction retry policy. It allows the initial attempt and
+ * at most one retry after a single 50 ms wait. It repeats the complete runner
  * operation with the same user and work callback, including a fresh account
  * lock and all reads. The runner releases the client before its rejection
  * reaches this policy, so no lock or transaction remains open while waiting.
+ * A second eligible failure is propagated without another attempt or wait.
  */
 export class RetryingSubmitOrderRunner implements AccountTransactionRunner {
   constructor(
