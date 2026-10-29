@@ -2,8 +2,12 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
+import { CancelOrderService } from '../../src/orders/application/cancel-order.service.js';
 import { SubmitOrderService } from '../../src/orders/application/submit-order.service.js';
-import { SUBMIT_ORDER_USE_CASE } from '../../src/orders/orders.tokens.js';
+import {
+  CANCEL_ORDER_USE_CASE,
+  SUBMIT_ORDER_USE_CASE,
+} from '../../src/orders/orders.tokens.js';
 import type { LatestQuoteRepository } from '../../src/quotes/application/ports/out/latest-quote.repository.js';
 import { LATEST_QUOTE_REPOSITORY } from '../../src/quotes/quotes.tokens.js';
 import type { AccountMovementRepository } from '../../src/resources/application/ports/out/account-movement.repository.js';
@@ -183,6 +187,9 @@ describe('Postgres account transaction against PostgreSQL', () => {
     expect(moduleRef?.get(SUBMIT_ORDER_USE_CASE)).toBeInstanceOf(
       SubmitOrderService,
     );
+    expect(moduleRef?.get(CANCEL_ORDER_USE_CASE)).toBeInstanceOf(
+      CancelOrderService,
+    );
 
     const result = await moduleRunner.run(
       COMPOSITION_USER_ID,
@@ -195,6 +202,7 @@ describe('Postgres account transaction against PostgreSQL', () => {
           count: movements.length,
           accountMovements: context.accountMovements,
           latestQuotes: context.latestQuotes,
+          orderCancellations: context.orderCancellations,
         };
       },
     );
@@ -212,6 +220,7 @@ describe('Postgres account transaction against PostgreSQL', () => {
     expect(result.value.latestQuotes).not.toBe(
       moduleRef?.get<LatestQuoteRepository>(LATEST_QUOTE_REPOSITORY),
     );
+    expect(result.value.orderCancellations).toBeDefined();
   });
 
   it('runs the transaction with effective READ COMMITTED isolation', async () => {

@@ -1,5 +1,6 @@
 import type { InstrumentReader } from '../../../../instruments/application/ports/out/instrument-reader.js';
 import type { LatestQuoteRepository } from '../../../../quotes/application/ports/out/latest-quote.repository.js';
+import type { OrderCancellationRepository } from '../../../../orders/application/ports/out/order-cancellation.repository.js';
 import type { PersistedOrderRepository } from '../../../../orders/application/ports/out/persisted-order.repository.js';
 import type { PreparedOrderRepository } from '../../../../orders/application/ports/out/prepared-order.repository.js';
 import type { AccountMovementRepository } from '../../../../resources/application/ports/out/account-movement.repository.js';
@@ -15,6 +16,7 @@ export interface AccountTransactionContext {
   readonly latestQuotes: LatestQuoteRepository;
   readonly persistedOrders: PersistedOrderRepository;
   readonly preparedOrders: PreparedOrderRepository;
+  readonly orderCancellations: OrderCancellationRepository;
 }
 
 export type AccountTransactionResult<T> =

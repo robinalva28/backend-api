@@ -4,6 +4,7 @@ import type { InstrumentReader } from '../../src/instruments/application/ports/o
 import type { LatestQuoteRepository } from '../../src/quotes/application/ports/out/latest-quote.repository.js';
 import type { PersistedOrderRepository } from '../../src/orders/application/ports/out/persisted-order.repository.js';
 import type { PreparedOrderRepository } from '../../src/orders/application/ports/out/prepared-order.repository.js';
+import type { OrderCancellationRepository } from '../../src/orders/application/ports/out/order-cancellation.repository.js';
 import type { AccountMovementRepository } from '../../src/resources/application/ports/out/account-movement.repository.js';
 import { SubmitOrderService } from '../../src/orders/application/submit-order.service.js';
 import { SubmitOrderError } from '../../src/orders/application/errors/submit-order.error.js';
@@ -113,6 +114,7 @@ function createContext(options: ContextOptions = {}): {
       latestQuotes: { findLatestByInstrumentId: findQuote },
       persistedOrders: { findByUserIdAndIdempotencyKey: findByKey },
       preparedOrders: { insert },
+      orderCancellations: cancellationRepository(),
     },
     spies: {
       findByKey,
@@ -207,6 +209,13 @@ function persistedOrder(
     idempotencyKey: KEY,
     status,
     intentMetadata: buildOrderIntentMetadata(intent),
+  };
+}
+
+function cancellationRepository(): OrderCancellationRepository {
+  return {
+    findByUserIdAndId: vi.fn(async () => null),
+    markCancelledIfNew: vi.fn(async () => false),
   };
 }
 
