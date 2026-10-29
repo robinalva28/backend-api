@@ -13,12 +13,27 @@ import { OrderIntentError } from '../../domain/order-intent.error.js';
 import { SubmitOrderBodyDto } from './submit-order-body.dto.js';
 import { INVALID_SUBMIT_ORDER_REQUEST_MESSAGE } from './http-messages.js';
 
+const ALLOWED_BODY_FIELDS: ReadonlySet<string> = new Set([
+  'instrumentId',
+  'side',
+  'type',
+  'size',
+  'amount',
+  'price',
+]);
+
 @Injectable()
 export class SubmitOrderBodyPipe
   implements PipeTransform<unknown, Promise<OrderIntent>>
 {
   async transform(value: unknown): Promise<OrderIntent> {
     if (!isPlainObject(value)) {
+      throw invalidRequest();
+    }
+
+    // Check the parsed JSON before class-transformer can drop own keys such as
+    // `__proto__` and `constructor`.
+    if (Object.keys(value).some((field) => !ALLOWED_BODY_FIELDS.has(field))) {
       throw invalidRequest();
     }
 

@@ -396,6 +396,45 @@ describe('POST /users/:userId/orders validation', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('accepts the same raw JSON when it only contains allowed fields', async () => {
+    const response = await postRawJson(JSON.stringify(LIMIT_BODY)).expect(201);
+
+    expect(response.body).toEqual({
+      order: { id: 7, status: 'NEW' },
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [
+      'ordinary unknown',
+      'currency',
+      `{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","currency":"ARS"}`,
+    ],
+    [
+      '__proto__',
+      '__proto__',
+      `{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","__proto__":{"polluted":true}}`,
+    ],
+    [
+      'constructor',
+      'constructor',
+      `{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","constructor":{"polluted":true}}`,
+    ],
+  ])(
+    'returns the exact 400 and does not invoke the use case for an own %s field',
+    async (_label, field, body) => {
+      const parsed = JSON.parse(body) as Record<string, unknown>;
+      expect(Object.hasOwn(parsed, field)).toBe(true);
+
+      const response = await postRawJson(body).expect(400);
+
+      expect(response.body).toEqual(INVALID);
+      expect(Object.keys(response.body)).toEqual(['message']);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     [
       'unknown currency',

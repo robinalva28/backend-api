@@ -1397,6 +1397,18 @@ Entorno y comandos realmente usados:
 - Node normaliza el espacio en blanco extremo (OWS) de las cabeceras HTTP antes de exponerlas a la aplicación. La aplicación rechaza espacios internos y valores unidos por coma; no puede observar OWS extremo ya eliminado por el parser HTTP. Esta limitación es de transporte, no del contrato.
 - No se agregaron dependencias, columnas, migraciones, cambios de seed ni modificaciones a `database.sql`.
 
+### B05-C-R1 — Rechazo de campos desconocidos en el JSON original (2026-10-29)
+
+**Estado:** implementado y aceptado tras revisión independiente el 2026-10-29; el usuario autorizó un único commit local de este bloque. Sin push, PR ni merge. No modifica el contrato B05-B ni el comportamiento de las solicitudes válidas.
+
+**Corrección:** `SubmitOrderBodyPipe` contrasta las claves propias del objeto JSON parseado con la lista cerrada `instrumentId`, `side`, `type`, `size`, `amount` y `price` antes de `plainToInstance`. Un campo desconocido, incluidas las claves propias `__proto__` y `constructor`, produce el 400 exacto `{ "message": "Invalid request." }` y no invoca el CDU. Se conservan class-validator, la exclusión `size`/`amount`, el precio exclusivo de LIMIT y las validaciones existentes.
+
+**Pruebas y validación:** 4 unitarias nuevas del pipe con `JSON.parse` y 4 HTTP nuevas con el doble tipado del puerto de entrada: control válido, campo desconocido ordinario, `__proto__` y `constructor`. Las HTTP comprueban el cuerpo exacto, el código 400 y cero llamadas al CDU. Con Node.js 24.22.1 se ejecutaron tipos de aplicación y pruebas, build, 39 archivos y 657 unitarias aisladas, y las 99 pruebas de `submit-order.http.test.ts`. No se repitieron integración PostgreSQL ni concurrencia porque no cambiaron el CDU, la persistencia, las transacciones ni el esquema.
+
+**Revisión independiente:** se inspeccionaron implementación y pruebas por separado. Se confirma la comprobación del JSON original antes de la transformación y las regresiones con propiedades propias creadas mediante `JSON.parse` o JSON crudo. Con Node.js 24.22.1 pasaron tipos de aplicación y pruebas, build, 657 unitarias aisladas, las 99 pruebas HTTP de envío con doble del puerto de entrada y `git diff --check`. No se encontraron hallazgos adicionales; no se repitió PostgreSQL porque no cambiaron persistencia, transacciones ni esquema. La autorización se limita a este commit local y no habilita publicación ni commits posteriores.
+
+**Límites:** no se implementó portfolio; no se agregaron dependencias, endpoints, restricciones funcionales ni cambios de SQL.
+
 ## Revisión del diseño de alto nivel
 
 El usuario autorizó completar y actualizar [diseno-alto-nivel.excalidraw](diseno-alto-nivel.excalidraw). El High Level Design representa una API NestJS con Express, controllers y ValidationPipe, cuatro CDU independientes —portfolio, búsqueda, envío y cancelación— y puertos de salida con adapters pg conectados a PostgreSQL. Se conserva el archivo original descargado de la raíz y las notas de requisitos; se actualiza el bloque de contratos HTTP conforme a las secuencias aprobadas.

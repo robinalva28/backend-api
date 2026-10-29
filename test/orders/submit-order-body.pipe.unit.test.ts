@@ -204,6 +204,48 @@ describe('SubmitOrderBodyPipe — valid input', () => {
   });
 });
 
+describe('SubmitOrderBodyPipe — unknown fields in the original JSON', () => {
+  const validJson =
+    '{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00"}';
+
+  it('accepts a JSON object that only contains allowed fields', async () => {
+    const body = JSON.parse(validJson) as Record<string, unknown>;
+
+    await expect(pipe.transform(body)).resolves.toEqual({
+      instrumentId: 47,
+      side: 'BUY',
+      type: 'LIMIT',
+      mode: 'size',
+      size: '3',
+      amount: null,
+      limitPrice: '10',
+    });
+  });
+
+  it.each([
+    [
+      'currency',
+      '{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","currency":"ARS"}',
+    ],
+    [
+      '__proto__',
+      '{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","__proto__":{"polluted":true}}',
+    ],
+    [
+      'constructor',
+      '{"instrumentId":47,"side":"BUY","type":"LIMIT","size":3,"price":"10.00","constructor":{"polluted":true}}',
+    ],
+  ])(
+    'rejects the own %s unknown field parsed from JSON',
+    async (field, rawJson) => {
+      const body = JSON.parse(rawJson) as Record<string, unknown>;
+
+      expect(Object.hasOwn(body, field)).toBe(true);
+      await expectInvalid(body);
+    },
+  );
+});
+
 describe('SubmitOrderBodyPipe — invalid roots and shape', () => {
   it.each([
     ['null', null],
@@ -365,5 +407,17 @@ describe('SubmitOrderBodyPipe — invalid field values', () => {
 });
 
 async function expectInvalid(value: unknown): Promise<void> {
-  await expect(pipe.transform(value)).rejects.toThrow(BadRequestException);
+  try {
+    await pipe.transform(value);
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    const exception = error as BadRequestException;
+    expect(exception.getStatus()).toBe(400);
+    expect(exception.getResponse()).toMatchObject({
+      message: 'Invalid request.',
+    });
+    return;
+  }
+
+  throw new Error('Expected the pipe to reject the value.');
 }
