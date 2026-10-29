@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { InstrumentsModule } from './instruments/instruments.module.js';
 import { OrdersModule } from './orders/orders.module.js';
+import { PortfolioModule } from './portfolio/portfolio.module.js';
 import { QuotesModule } from './quotes/quotes.module.js';
 import { ResourcesModule } from './resources/resources.module.js';
 import { TransactionsModule } from './transactions/transactions.module.js';
@@ -22,6 +23,7 @@ import { TransactionsModule } from './transactions/transactions.module.js';
     }),
     InstrumentsModule,
     OrdersModule,
+    PortfolioModule,
     QuotesModule,
     ResourcesModule,
     TransactionsModule,
