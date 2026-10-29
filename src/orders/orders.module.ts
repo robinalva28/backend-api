@@ -3,6 +3,7 @@ import type { AccountTransactionRunner } from '../transactions/application/ports
 import { TransactionsModule } from '../transactions/transactions.module.js';
 import { ACCOUNT_TRANSACTION_RUNNER } from '../transactions/transactions.tokens.js';
 import { CancelOrderService } from './application/cancel-order.service.js';
+import { RetryingSubmitOrderRunner } from './application/retrying-submit-order.runner.js';
 import { SubmitOrderService } from './application/submit-order.service.js';
 import type { Clock } from './application/ports/out/clock.port.js';
 import { CancelOrderController } from './infrastructure/http/cancel-order.controller.js';
@@ -30,7 +31,11 @@ import {
       useFactory: (
         runner: AccountTransactionRunner,
         clock: Clock,
-      ): SubmitOrderService => new SubmitOrderService(runner, clock),
+      ): SubmitOrderService =>
+        new SubmitOrderService(
+          new RetryingSubmitOrderRunner(runner),
+          clock,
+        ),
     },
     {
       provide: CANCEL_ORDER_USE_CASE,

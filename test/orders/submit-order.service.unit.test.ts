@@ -7,6 +7,7 @@ import type { PreparedOrderRepository } from '../../src/orders/application/ports
 import type { OrderCancellationRepository } from '../../src/orders/application/ports/out/order-cancellation.repository.js';
 import type { AccountMovementRepository } from '../../src/resources/application/ports/out/account-movement.repository.js';
 import { SubmitOrderService } from '../../src/orders/application/submit-order.service.js';
+import { RetryingSubmitOrderRunner } from '../../src/orders/application/retrying-submit-order.runner.js';
 import { SubmitOrderError } from '../../src/orders/application/errors/submit-order.error.js';
 import type { SubmitOrderInput } from '../../src/orders/application/ports/in/submit-order.use-case.js';
 import {
@@ -164,6 +165,40 @@ class UncertainCommitRunner implements AccountTransactionRunner {
       commitOutcome: 'uncertain',
       clientDisposition: 'discarded',
       cause: new Error('connection lost during commit'),
+    });
+  }
+}
+
+class FailingBeforeCommitRunner implements AccountTransactionRunner {
+  calls = 0;
+
+  constructor(
+    private readonly inner: AccountTransactionRunner,
+    private readonly failures: number,
+  ) {}
+
+  async run<T>(
+    userId: number,
+    work: (context: AccountTransactionContext) => Promise<T>,
+  ): Promise<AccountTransactionResult<T>> {
+    this.calls += 1;
+
+    return this.inner.run(userId, async (context) => {
+      const value = await work(context);
+
+      if (this.calls <= this.failures) {
+        throw new AccountTransactionError({
+          stage: 'work',
+          commitOutcome: 'not-attempted',
+          clientDisposition: 'released',
+          cause: Object.assign(new Error('forced serialization failure'), {
+            code: '40001',
+          }),
+          transientFailure: 'serialization-failure',
+        });
+      }
+
+      return value;
     });
   }
 }
@@ -844,6 +879,112 @@ describe('SubmitOrderService', () => {
 
     expect(spies.findByKey).not.toHaveBeenCalled();
     expect(spies.insert).not.toHaveBeenCalled();
+  });
+
+  it('repeats the same user, UUID and normalized intent across eligible retries', async () => {
+    const intent = sizeIntent({ size: '10' });
+    const { context, spies } = createContext({
+      movements: [cashIn(1000)],
+    });
+    const waits = vi.fn(
+      async (_milliseconds: number): Promise<void> => undefined,
+    );
+    const failing = new FailingBeforeCommitRunner(
+      new FakeRunner(context),
+      3,
+    );
+    const service = new SubmitOrderService(
+      new RetryingSubmitOrderRunner(failing, waits),
+      { now: () => new Date(FIXED_DATE) },
+    );
+
+    await expect(service.execute(input(intent))).resolves.toMatchObject({
+      status: 'FILLED',
+      replayed: false,
+    });
+
+    expect(failing.calls).toBe(4);
+    expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
+      50, 100, 200,
+    ]);
+    expect(spies.findByKey).toHaveBeenCalledTimes(4);
+    expect(spies.findByKey.mock.calls).toEqual(
+      Array.from({ length: 4 }, () => [USER_ID, KEY]),
+    );
+    expect(spies.insert).toHaveBeenCalledTimes(4);
+
+    const insertCalls = spies.insert.mock.calls as unknown as Array<
+      [PreparedOrder]
+    >;
+
+    for (const [prepared] of insertCalls) {
+      expect(prepared).toMatchObject({
+        idempotencyKey: KEY,
+        intent,
+        size: 10,
+        price: '10',
+        status: 'FILLED',
+      });
+    }
+  });
+
+  it('does not retry replay, REJECTED or conflict outcomes', async () => {
+    const wait = vi.fn(
+      async (_milliseconds: number): Promise<void> => undefined,
+    );
+
+    const intent = sizeIntent({ size: '10' });
+    const replayContext = createContext({
+      order: persistedOrder(intent, 'REJECTED'),
+    });
+    const replayRunner = new FakeRunner(replayContext.context);
+    const replayService = new SubmitOrderService(
+      new RetryingSubmitOrderRunner(replayRunner, wait),
+      { now: () => new Date(FIXED_DATE) },
+    );
+
+    await expect(replayService.execute(input(intent))).resolves.toMatchObject({
+      status: 'REJECTED',
+      replayed: true,
+    });
+    expect(replayRunner.calls).toBe(1);
+
+    const rejectedContext = createContext({
+      quote: {
+        id: 9,
+        instrumentId: INSTRUMENT_ID,
+        date: '2023-07-14',
+        close: '10',
+        previousClose: '10',
+      },
+      movements: [cashIn(1)],
+    });
+    const rejectedRunner = new FakeRunner(rejectedContext.context);
+    const rejectedService = new SubmitOrderService(
+      new RetryingSubmitOrderRunner(rejectedRunner, wait),
+      { now: () => new Date(FIXED_DATE) },
+    );
+
+    await expect(
+      rejectedService.execute(input(intent)),
+    ).resolves.toMatchObject({ status: 'REJECTED', replayed: false });
+    expect(rejectedRunner.calls).toBe(1);
+
+    const conflictContext = createContext({
+      order: persistedOrder(sizeIntent({ size: '11' })),
+    });
+    const conflictRunner = new FakeRunner(conflictContext.context);
+    const conflictService = new SubmitOrderService(
+      new RetryingSubmitOrderRunner(conflictRunner, wait),
+      { now: () => new Date(FIXED_DATE) },
+    );
+
+    await expectSubmitOrderError(
+      conflictService.execute(input(intent)),
+      'conflict',
+    );
+    expect(conflictRunner.calls).toBe(1);
+    expect(wait).not.toHaveBeenCalled();
   });
 
   it('does not emit success or claim rollback when COMMIT is uncertain', async () => {

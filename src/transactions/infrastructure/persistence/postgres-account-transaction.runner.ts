@@ -6,6 +6,7 @@ import { PostgresPreparedOrderRepository } from '../../../orders/infrastructure/
 import { PostgresLatestQuoteRepository } from '../../../quotes/infrastructure/persistence/postgres-latest-quote.repository.js';
 import { PostgresAccountMovementRepository } from '../../../resources/infrastructure/persistence/postgres-account-movement.repository.js';
 import { AccountTransactionError } from '../../application/errors/account-transaction.error.js';
+import type { AccountTransactionTransientFailure } from '../../application/errors/account-transaction.error.js';
 import type {
   AccountTransactionContext,
   AccountTransactionResult,
@@ -35,6 +36,14 @@ const ROLLED_BACK_COMMIT_CAUSE =
   'PostgreSQL rolled back the transaction instead of committing it.';
 const UNEXPECTED_COMMIT_COMMAND_CAUSE =
   'PostgreSQL returned an unexpected command for COMMIT.';
+
+const TRANSIENT_SQL_STATES: ReadonlyMap<
+  string,
+  AccountTransactionTransientFailure
+> = new Map([
+  ['40001', 'serialization-failure'],
+  ['40P01', 'deadlock'],
+]);
 
 export class PostgresAccountTransactionRunner
   implements AccountTransactionRunner
@@ -91,6 +100,10 @@ export class PostgresAccountTransactionRunner
           clientDisposition: discardClient ? 'discarded' : 'released',
           cause: error,
           rollbackError,
+          transientFailure:
+            rollbackError === undefined
+              ? classifyTransientFailure(error)
+              : undefined,
         });
       }
 
@@ -125,6 +138,10 @@ export class PostgresAccountTransactionRunner
           clientDisposition: discardClient ? 'discarded' : 'released',
           cause: error,
           rollbackError,
+          transientFailure:
+            rollbackError === undefined
+              ? classifyTransientFailure(error)
+              : undefined,
         });
       }
 
@@ -230,4 +247,18 @@ async function rollback(
   } catch (error) {
     return error;
   }
+}
+
+function classifyTransientFailure(
+  cause: unknown,
+): AccountTransactionTransientFailure | undefined {
+  if (cause === null || typeof cause !== 'object') {
+    return undefined;
+  }
+
+  const code = (cause as { readonly code?: unknown }).code;
+
+  return typeof code === 'string'
+    ? TRANSIENT_SQL_STATES.get(code)
+    : undefined;
 }
