@@ -1,5 +1,6 @@
 import type { QueryResult, QueryResultRow } from 'pg';
 import { PostgresInstrumentReader } from '../../../instruments/infrastructure/persistence/postgres-instrument-reader.repository.js';
+import { PostgresOrderCancellationRepository } from '../../../orders/infrastructure/persistence/postgres-order-cancellation.repository.js';
 import { PostgresPersistedOrderRepository } from '../../../orders/infrastructure/persistence/postgres-persisted-order.repository.js';
 import { PostgresPreparedOrderRepository } from '../../../orders/infrastructure/persistence/postgres-prepared-order.repository.js';
 import { PostgresLatestQuoteRepository } from '../../../quotes/infrastructure/persistence/postgres-latest-quote.repository.js';
@@ -216,6 +217,7 @@ function createContext(
     latestQuotes: new PostgresLatestQuoteRepository(client),
     persistedOrders: new PostgresPersistedOrderRepository(client),
     preparedOrders: new PostgresPreparedOrderRepository(client, userId),
+    orderCancellations: new PostgresOrderCancellationRepository(client),
   };
 }
 
