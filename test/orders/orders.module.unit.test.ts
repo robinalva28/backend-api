@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CancelOrderUseCase } from '../../src/orders/application/ports/in/cancel-order.use-case.js';
 import type { SubmitOrderUseCase } from '../../src/orders/application/ports/in/submit-order.use-case.js';
 import { createOrderIntent } from '../../src/orders/domain/order-intent.js';
+import { buildOrderIntentMetadata } from '../../src/orders/domain/order-intent-metadata.js';
+import type { PersistedOrder } from '../../src/orders/domain/persisted-order.js';
 import { OrdersModule } from '../../src/orders/orders.module.js';
 import {
   CANCEL_ORDER_USE_CASE,
@@ -25,12 +27,24 @@ const KEY = '33333333-3333-4333-8333-333333333333';
 class ScriptedRunner implements AccountTransactionRunner {
   calls = 0;
   transientFailures = 0;
+  uncertainCommitOnce = false;
+  recoveryOrder: PersistedOrder | undefined;
 
   async run<T>(
-    _userId: number,
-    _work: (context: AccountTransactionContext) => Promise<T>,
+    userId: number,
+    work: (context: AccountTransactionContext) => Promise<T>,
   ): Promise<AccountTransactionResult<T>> {
     this.calls += 1;
+
+    if (this.uncertainCommitOnce) {
+      this.uncertainCommitOnce = false;
+      throw new AccountTransactionError({
+        stage: 'commit',
+        commitOutcome: 'uncertain',
+        clientDisposition: 'discarded',
+        cause: new Error('response lost after COMMIT'),
+      });
+    }
 
     if (this.transientFailures > 0) {
       this.transientFailures -= 1;
@@ -43,6 +57,13 @@ class ScriptedRunner implements AccountTransactionRunner {
         }),
         transientFailure: 'serialization-failure',
       });
+    }
+
+    if (this.recoveryOrder !== undefined) {
+      const order = this.recoveryOrder;
+      const value = await work(recoveryContext(userId, order));
+
+      return { status: 'committed', value };
     }
 
     return {
@@ -62,6 +83,46 @@ class ScriptedRunner implements AccountTransactionRunner {
       } as unknown as T,
     };
   }
+}
+
+function recoveryContext(
+  userId: number,
+  order: PersistedOrder,
+): AccountTransactionContext {
+  return {
+    userId,
+    instruments: {
+      findById: async () => {
+        throw new Error('Recovery read an instrument.');
+      },
+    },
+    accountMovements: {
+      findByUserId: async () => {
+        throw new Error('Recovery read account movements.');
+      },
+    },
+    latestQuotes: {
+      findLatestByInstrumentId: async () => {
+        throw new Error('Recovery read a quote.');
+      },
+    },
+    persistedOrders: {
+      findByUserIdAndIdempotencyKey: async () => order,
+    },
+    preparedOrders: {
+      insert: async () => {
+        throw new Error('Recovery inserted an order.');
+      },
+    },
+    orderCancellations: {
+      findByUserIdAndId: async () => {
+        throw new Error('Recovery read a cancellation.');
+      },
+      markCancelledIfNew: async () => {
+        throw new Error('Recovery cancelled an order.');
+      },
+    },
+  };
 }
 
 describe('OrdersModule retry composition', () => {
@@ -128,5 +189,62 @@ describe('OrdersModule retry composition', () => {
       cancelOrder.execute({ userId: USER_ID, orderId: ORDER_ID }),
     ).rejects.toBeInstanceOf(AccountTransactionError);
     expect(runner.calls).toBe(1);
+  });
+
+  it('composes one raw recovery query for submission after an uncertain COMMIT', async () => {
+    const intent = createOrderIntent({
+      instrumentId: 47,
+      side: 'BUY',
+      type: 'LIMIT',
+      size: '3',
+      limitPrice: '10.00',
+    });
+    const order: PersistedOrder = {
+      id: ORDER_ID,
+      userId: USER_ID,
+      idempotencyKey: KEY,
+      status: 'NEW',
+      intentMetadata: buildOrderIntentMetadata(intent),
+    };
+    runner.calls = 0;
+    runner.transientFailures = 0;
+    runner.uncertainCommitOnce = true;
+    runner.recoveryOrder = order;
+
+    try {
+      await expect(
+        submitOrder.execute({
+          userId: USER_ID,
+          idempotencyKey: KEY,
+          intent,
+        }),
+      ).resolves.toEqual({
+        orderId: ORDER_ID,
+        status: 'NEW',
+        replayed: true,
+      });
+      expect(runner.calls).toBe(2);
+    } finally {
+      runner.uncertainCommitOnce = false;
+      runner.recoveryOrder = undefined;
+    }
+  });
+
+  it('does not recover cancellation from an uncertain COMMIT', async () => {
+    runner.calls = 0;
+    runner.transientFailures = 0;
+    runner.uncertainCommitOnce = true;
+
+    try {
+      await expect(
+        cancelOrder.execute({ userId: USER_ID, orderId: ORDER_ID }),
+      ).rejects.toMatchObject({
+        stage: 'commit',
+        commitOutcome: 'uncertain',
+      });
+      expect(runner.calls).toBe(1);
+    } finally {
+      runner.uncertainCommitOnce = false;
+    }
   });
 });

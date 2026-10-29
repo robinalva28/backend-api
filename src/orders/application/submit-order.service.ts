@@ -1,8 +1,10 @@
 import { Decimal } from 'decimal.js';
 import { calculateAccountResources } from '../../resources/domain/calculate-account-resources.js';
 import type { AccountResources } from '../../resources/domain/account-resources.js';
+import { AccountTransactionError } from '../../transactions/application/errors/account-transaction.error.js';
 import type {
   AccountTransactionContext,
+  AccountTransactionResult,
   AccountTransactionRunner,
 } from '../../transactions/application/ports/out/account-transaction.port.js';
 import { resolveOrderReplay } from './resolve-order-replay.js';
@@ -13,6 +15,10 @@ import type {
   SubmitOrderUseCase,
 } from './ports/in/submit-order.use-case.js';
 import type { Clock } from './ports/out/clock.port.js';
+import type {
+  SubmitOrderRecovery,
+  SubmitOrderRecoveryOutcome,
+} from './ports/out/submit-order-recovery.port.js';
 import {
   createOrderIntent,
   type OrderIntent,
@@ -38,32 +44,74 @@ const TRADABLE_INSTRUMENT_TYPE = 'ACCIONES';
 const SUPPORTED_CURRENCY = 'ARS';
 
 /**
- * Internal order-submission use case for one transactional attempt. It
- * composes the existing account lock, replay resolution, market quote,
- * resource calculation and prepared-order writer. It does not expose HTTP or
- * infer recovery from an uncertain COMMIT. The submission composition applies
- * the bounded transient-failure retry policy around this single-attempt use
- * case; cancellation keeps using the runner directly.
+ * Internal order-submission use case. The submission composition applies the
+ * bounded transient-failure retry policy around this single-attempt use case.
+ * After an uncertain COMMIT whose discarded client was released successfully,
+ * it performs at most one read-only recovery query through a separate runner;
+ * that query never goes through the retry policy and never creates an order.
+ * Cancellation keeps using the runner directly.
  */
 export class SubmitOrderService implements SubmitOrderUseCase {
   constructor(
     private readonly runner: AccountTransactionRunner,
     private readonly clock: Clock,
+    private readonly recovery: SubmitOrderRecovery,
   ) {}
 
   async execute(input: SubmitOrderInput): Promise<SubmitOrderOutput> {
     assertSupportedCurrency(input.currency);
     const intent = canonicalizeIntent(input.intent);
-    const result = await this.runner.run<SubmitWorkOutcome>(
-      input.userId,
-      (context) => this.submit(context, input.idempotencyKey, intent),
-    );
+    let result: AccountTransactionResult<SubmitWorkOutcome>;
+
+    try {
+      result = await this.runner.run<SubmitWorkOutcome>(
+        input.userId,
+        (context) => this.submit(context, input.idempotencyKey, intent),
+      );
+    } catch (error) {
+      if (!isRecoverableUncertainCommit(error)) {
+        throw error;
+      }
+
+      return this.recover(input.userId, input.idempotencyKey, intent);
+    }
 
     if (result.status === 'account-not-found') {
       throw new SubmitOrderError('account-not-found');
     }
 
     return toOutput(result.value);
+  }
+
+  private async recover(
+    userId: number,
+    idempotencyKey: string,
+    intent: OrderIntent,
+  ): Promise<SubmitOrderOutput> {
+    let outcome: SubmitOrderRecoveryOutcome;
+
+    try {
+      outcome = await this.recovery.recover({
+        userId,
+        idempotencyKey,
+        intent,
+      });
+    } catch (error) {
+      throw new SubmitOrderError('completion-failed', { cause: error });
+    }
+
+    switch (outcome.status) {
+      case 'recovered':
+        return {
+          orderId: outcome.order.id,
+          status: outcome.order.status,
+          replayed: true,
+        };
+      case 'conflict':
+        throw new SubmitOrderError('conflict');
+      case 'unrecoverable':
+        throw new SubmitOrderError('completion-failed');
+    }
   }
 
   private async submit(
@@ -171,6 +219,18 @@ export class SubmitOrderService implements SubmitOrderUseCase {
 
     return { kind: 'available', value: close };
   }
+}
+
+function isRecoverableUncertainCommit(
+  error: unknown,
+): error is AccountTransactionError {
+  return (
+    error instanceof AccountTransactionError &&
+    error.stage === 'commit' &&
+    error.commitOutcome === 'uncertain' &&
+    error.clientDisposition === 'discarded' &&
+    error.releaseError === undefined
+  );
 }
 
 function assertSupportedCurrency(currency: string | undefined): void {

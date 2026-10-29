@@ -42,6 +42,7 @@ export class SubmitOrderExceptionFilter implements ExceptionFilter {
           return;
         case 'quote-unavailable':
         case 'quote-invalid':
+        case 'completion-failed':
           this.fail(exception, response);
           return;
       }

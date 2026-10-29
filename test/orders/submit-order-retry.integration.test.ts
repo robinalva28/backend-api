@@ -33,6 +33,7 @@ import type {
   PostgresConnectionPool,
   PostgresTransactionClient,
 } from '../../src/transactions/infrastructure/persistence/postgres-account-transaction.runner.js';
+import { NeverSubmitOrderRecovery } from '../support/never-recovery.js';
 import { testDatabaseConfig } from '../support/test-database.js';
 
 const SCHEMA = 'b08a_test';
@@ -149,9 +150,13 @@ beforeAll(async () => {
   );
 
   const runner = new PostgresAccountTransactionRunner(pool);
-  rawSubmit = new SubmitOrderService(runner, {
-    now: () => new Date(FIXED_DATE),
-  });
+  rawSubmit = new SubmitOrderService(
+    runner,
+    {
+      now: () => new Date(FIXED_DATE),
+    },
+    new NeverSubmitOrderRecovery(),
+  );
   cancelOrder = new CancelOrderService(runner);
 });
 
@@ -430,6 +435,7 @@ function createRetryService(
     service: new SubmitOrderService(
       new RetryingSubmitOrderRunner(runner, wait),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     ),
     recorder,
   };

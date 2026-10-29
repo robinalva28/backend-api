@@ -98,7 +98,7 @@ describe('SubmitOrderExceptionFilter', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it.each(['quote-unavailable', 'quote-invalid'] as const)(
+  it.each(['quote-unavailable', 'quote-invalid', 'completion-failed'] as const)(
     'maps %s to the sanitized 500',
     (code) => {
       const { host, status, json } = createHost();

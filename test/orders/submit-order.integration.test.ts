@@ -23,6 +23,7 @@ import type {
   AccountTransactionRunner,
 } from '../../src/transactions/application/ports/out/account-transaction.port.js';
 import { PostgresAccountTransactionRunner } from '../../src/transactions/infrastructure/persistence/postgres-account-transaction.runner.js';
+import { NeverSubmitOrderRecovery } from '../support/never-recovery.js';
 import { testDatabaseConfig } from '../support/test-database.js';
 
 const SCHEMA = 'b05a_test';
@@ -114,9 +115,13 @@ beforeAll(async () => {
   );
   runner = new PostgresAccountTransactionRunner(pool);
   movements = new PostgresAccountMovementRepository(pool);
-  service = new SubmitOrderService(runner, {
-    now: () => new Date(FIXED_DATE),
-  });
+  service = new SubmitOrderService(
+    runner,
+    {
+      now: () => new Date(FIXED_DATE),
+    },
+    new NeverSubmitOrderRecovery(),
+  );
 });
 
 afterAll(async () => {
@@ -699,6 +704,7 @@ describe('SubmitOrderService against PostgreSQL', () => {
     const failingService = new SubmitOrderService(
       new FailingAfterWorkRunner(runner),
       { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
     );
 
     await expect(
