@@ -909,7 +909,7 @@ describe('SubmitOrderService', () => {
     expect(spies.insert).not.toHaveBeenCalled();
   });
 
-  it('repeats the same user, UUID and normalized intent across eligible retries', async () => {
+  it('repeats the same user, UUID and normalized intent across the retry', async () => {
     const intent = sizeIntent({ size: '10' });
     const { context, spies } = createContext({
       movements: [cashIn(1000)],
@@ -919,7 +919,7 @@ describe('SubmitOrderService', () => {
     );
     const failing = new FailingBeforeCommitRunner(
       new FakeRunner(context),
-      3,
+      1,
     );
     const service = new SubmitOrderService(
       new RetryingSubmitOrderRunner(failing, waits),
@@ -932,15 +932,15 @@ describe('SubmitOrderService', () => {
       replayed: false,
     });
 
-    expect(failing.calls).toBe(4);
+    expect(failing.calls).toBe(2);
     expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
-      50, 100, 200,
+      50,
     ]);
-    expect(spies.findByKey).toHaveBeenCalledTimes(4);
+    expect(spies.findByKey).toHaveBeenCalledTimes(2);
     expect(spies.findByKey.mock.calls).toEqual(
-      Array.from({ length: 4 }, () => [USER_ID, KEY]),
+      Array.from({ length: 2 }, () => [USER_ID, KEY]),
     );
-    expect(spies.insert).toHaveBeenCalledTimes(4);
+    expect(spies.insert).toHaveBeenCalledTimes(2);
 
     const insertCalls = spies.insert.mock.calls as unknown as Array<
       [PreparedOrder]

@@ -245,52 +245,17 @@ describe('SubmitOrderService retries against PostgreSQL', () => {
     ]);
   });
 
-  it('recovers after the third eligible failure with 50, 100 and 200 ms waits', async () => {
-    const userId = await createAccount(10_000);
-    const key = randomUUID();
-    const intent = marketIntent({ size: '2' });
-    await installFailingTrigger(
-      `IF attempt = 1 THEN
-         RAISE EXCEPTION 'forced serialization failure' USING ERRCODE = '40001';
-       ELSIF attempt = 2 THEN
-         RAISE EXCEPTION 'forced deadlock' USING ERRCODE = '40P01';
-       ELSIF attempt = 3 THEN
-         RAISE EXCEPTION 'forced serialization failure' USING ERRCODE = '40001';
-       END IF;`,
-    );
-    const waits: number[] = [];
-    const { service } = createRetryService((milliseconds) => {
-      waits.push(milliseconds);
-
-      return Promise.resolve();
-    });
-
-    const output = await service.execute({
-      userId,
-      idempotencyKey: key,
-      intent,
-    });
-
-    expect(output).toMatchObject({ status: 'FILLED', replayed: false });
-    expect(waits).toEqual([50, 100, 200]);
-    expect(await attemptCount()).toBe(4);
-    expect(await countByKey(userId, key)).toBe(1);
-    expect((await resourcesFor(userId)).accountingCash.toString()).toBe(
-      '9400',
-    );
-  });
-
-  it('exhausts four eligible attempts without an order or reservation', async () => {
+  it('stops after two eligible failures with a single wait and no order or reservation', async () => {
     const userId = await createAccount(1_000);
     const key = randomUUID();
     const intent = limitIntent({ size: '2', limitPrice: '100' });
     await installFailingTrigger(
-      `IF attempt <= 4 THEN
+      `IF attempt <= 2 THEN
          RAISE EXCEPTION 'forced deadlock' USING ERRCODE = '40P01';
        END IF;`,
     );
     const waits: number[] = [];
-    const { service } = createRetryService((milliseconds) => {
+    const { service, recorder } = createRetryService((milliseconds) => {
       waits.push(milliseconds);
 
       return Promise.resolve();
@@ -313,9 +278,16 @@ describe('SubmitOrderService retries against PostgreSQL', () => {
       rollbackError: undefined,
       releaseError: undefined,
     });
-    expect(waits).toEqual([50, 100, 200]);
-    expect(await attemptCount()).toBe(4);
+    expect(waits).toEqual([50]);
+    expect(await attemptCount()).toBe(2);
     expect(await countByKey(userId, key)).toBe(0);
+    expect(recorder.clients).toHaveLength(2);
+    expect(transactionCommands(recorder)).toEqual({
+      begin: 2,
+      lock: 2,
+      rollback: 2,
+      commit: 0,
+    });
 
     const resources = await resourcesFor(userId);
     expect(resources.accountingCash.toString()).toBe('1000');

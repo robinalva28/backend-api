@@ -9,7 +9,7 @@ import type {
 } from '../../src/transactions/application/ports/out/account-transaction.port.js';
 
 const USER_ID = 5801;
-const DELAYS = [50, 100, 200] as const;
+const DELAYS = [50] as const;
 
 class ScriptedRunner implements AccountTransactionRunner {
   readonly userIds: number[] = [];
@@ -86,48 +86,39 @@ describe('RetryingSubmitOrderRunner', () => {
     expect(waits).not.toHaveBeenCalled();
   });
 
-  it.each([1, 2, 3])(
-    'recovers after %i eligible transient failures',
-    async (failures) => {
-      const outcomes = [
-        ...Array.from({ length: failures }, () => eligibleFailure()),
-        'success',
-      ];
-      const { retry, runner, waits } = createRunner(outcomes);
+  it('recovers after one eligible transient failure with a single 50 ms wait', async () => {
+    const outcomes = [eligibleFailure(), 'success'];
+    const { retry, runner, waits } = createRunner(outcomes);
 
-      await expect(
-        retry.run(USER_ID, async () => 'value'),
-      ).resolves.toEqual({ status: 'committed', value: undefined });
+    await expect(
+      retry.run(USER_ID, async () => 'value'),
+    ).resolves.toEqual({ status: 'committed', value: undefined });
 
-      expect(runner.userIds).toEqual(
-        Array.from({ length: failures + 1 }, () => USER_ID),
-      );
-      expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual(
-        DELAYS.slice(0, failures),
-      );
-      expect(runner.works.every((work) => work === runner.works[0])).toBe(true);
-    },
-  );
+    expect(runner.userIds).toEqual([USER_ID, USER_ID]);
+    expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
+      ...DELAYS,
+    ]);
+    expect(runner.works.every((work) => work === runner.works[0])).toBe(true);
+  });
 
-  it('stops after four attempts with exactly three waits', async () => {
-    const failures = [
-      eligibleFailure(),
-      eligibleFailure({
-        cause: sqlStateError('40P01'),
-        transientFailure: 'deadlock',
-      }),
-      eligibleFailure(),
-      eligibleFailure(),
-    ];
-    const lastFailure = failures[3];
-    const { retry, runner, waits } = createRunner(failures);
+  it('stops after two eligible failures even when a third attempt could succeed', async () => {
+    const firstFailure = eligibleFailure();
+    const secondFailure = eligibleFailure({
+      cause: sqlStateError('40P01'),
+      transientFailure: 'deadlock',
+    });
+    const { retry, runner, waits } = createRunner([
+      firstFailure,
+      secondFailure,
+      'success',
+    ]);
 
     await expect(retry.run(USER_ID, async () => 'value')).rejects.toBe(
-      lastFailure,
+      secondFailure,
     );
-    expect(runner.userIds).toHaveLength(4);
+    expect(runner.userIds).toHaveLength(2);
     expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
-      50, 100, 200,
+      50,
     ]);
   });
 
