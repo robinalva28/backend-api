@@ -2,6 +2,8 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
+import { SubmitOrderService } from '../../src/orders/application/submit-order.service.js';
+import { SUBMIT_ORDER_USE_CASE } from '../../src/orders/orders.tokens.js';
 import type { LatestQuoteRepository } from '../../src/quotes/application/ports/out/latest-quote.repository.js';
 import { LATEST_QUOTE_REPOSITORY } from '../../src/quotes/quotes.tokens.js';
 import type { AccountMovementRepository } from '../../src/resources/application/ports/out/account-movement.repository.js';
@@ -178,6 +180,9 @@ describe('Postgres account transaction against PostgreSQL', () => {
   it('is composed by the application module and reuses the shared pool', async () => {
     expect(moduleRunner).toBeDefined();
     expect(moduleRef?.get(ACCOUNT_TRANSACTION_RUNNER)).toBe(moduleRunner);
+    expect(moduleRef?.get(SUBMIT_ORDER_USE_CASE)).toBeInstanceOf(
+      SubmitOrderService,
+    );
 
     const result = await moduleRunner.run(
       COMPOSITION_USER_ID,

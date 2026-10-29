@@ -196,6 +196,7 @@ describe('PostgresAccountTransactionRunner', () => {
 
     await runner.run(1, async (context) => {
       firstContext = context;
+      await context.instruments.findById(33);
       await context.accountMovements.findByUserId(1);
       await context.latestQuotes.findLatestByInstrumentId(11);
       return 'first';
@@ -211,6 +212,9 @@ describe('PostgresAccountTransactionRunner', () => {
     expect(firstClient.calls.some(({ text }) => text.includes('FROM orders'))).toBe(
       true,
     );
+    expect(
+      firstClient.calls.some(({ text }) => text.includes('FROM instruments')),
+    ).toBe(true);
     expect(
       firstClient.calls.some(({ text }) => text.includes('FROM marketdata')),
     ).toBe(true);
