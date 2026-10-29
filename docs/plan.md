@@ -4,7 +4,7 @@ Este documento concentra el estado, decisiones y planificación. Las propuestas 
 
 ## Etapa vigente y restricciones
 
-Etapa actual: B04-A/B04-A-R1 aceptados y versionados en `e57de25`; B04-B/R1/R2 en `35f87f4`; B04-C en `87f2276`; B04-D en `314d8f9`. B04-E aceptado tras revisión independiente del 2026-10-28 y versionado en `e01465d`, con tipos, build y 394 pruebas aprobadas. B05-A tiene alcance y decisiones aprobados e implementación local validada el 2026-10-28: CDU interno de envío de un intento, lectura mínima de instrumento, reloj sustituible y composición por tokens. No expone HTTP ni implementa cancelación, reintentos automáticos o recuperación de COMMIT incierto; fue aceptado tras revisión independiente del 2026-10-28 y versionado en `10f1740` mediante el único commit local autorizado. Esa autorización quedó consumida; no habilita publicación ni commits posteriores. B06-A fue implementado y validado localmente el 2026-10-28 como CDU interno de cancelación: puerto de entrada propio, lectura por usuario/orden y transición condicional NEW → CANCELLED dentro del contexto transaccional, sin HTTP, reintentos ni recuperación automática. Fue aceptado tras revisión independiente del 2026-10-28 y versionado en `49a4924` mediante el único commit local autorizado; esa autorización quedó consumida y no habilita publicación ni commits posteriores. B06-B fue implementado y validado localmente el 2026-10-28: endpoint `POST /users/:userId/orders/:orderId/cancel`, validación léxica de identificadores, rechazo previo de cualquier body con contenido, traducción exacta de errores y pruebas HTTP con PostgreSQL aislado, sin cambios en el CDU ni en las reglas contables. B06-B-R1 corrigió chunked vacío y escapes de URL malformados; B06-B-R2 corrigió el reconocimiento del pathname en request-targets absolutos. B06-B/R1/R2 fue aceptado tras revisión independiente del 2026-10-28; el usuario autorizó su único commit local, sin publicación ni commits posteriores. B04-E agrega el puerto y adapter de escritura de una orden preparada dentro del callback bloqueado, conservando UUID y metadatos v1. El usuario autorizó un único commit local de B04-E, sin publicación ni commits posteriores. La suite completa quedó en 45 archivos y 694 pruebas (480 unitarias, 122 de integración y 92 HTTP). El detalle está en [Implementación y validación B04-E](#implementación-y-validación-b04-e), [B05-A](#b05-a--cdu-interno-de-envío), [B06-A](#b06-a--cdu-interno-de-cancelación) y [B06-B](#b06-b--adapter-http-de-cancelación). La revisión final confirmó R1 y R2: B06-B aceptado con 694 pruebas aprobadas, sin nuevos hallazgos y con su único commit local autorizado; sin publicación ni commits posteriores autorizados.
+Etapa actual: B04-A/B04-A-R1 aceptados y versionados en `e57de25`; B04-B/R1/R2 en `35f87f4`; B04-C en `87f2276`; B04-D en `314d8f9`. B04-E aceptado tras revisión independiente del 2026-10-28 y versionado en `e01465d`, con tipos, build y 394 pruebas aprobadas. B05-A tiene alcance y decisiones aprobados e implementación local validada el 2026-10-28: CDU interno de envío de un intento, lectura mínima de instrumento, reloj sustituible y composición por tokens. No expone HTTP ni implementa cancelación, reintentos automáticos o recuperación de COMMIT incierto; fue aceptado tras revisión independiente del 2026-10-28 y versionado en `10f1740` mediante el único commit local autorizado. Esa autorización quedó consumida; no habilita publicación ni commits posteriores. B06-A fue implementado y validado localmente el 2026-10-28 como CDU interno de cancelación: puerto de entrada propio, lectura por usuario/orden y transición condicional NEW → CANCELLED dentro del contexto transaccional, sin HTTP, reintentos ni recuperación automática. Fue aceptado tras revisión independiente del 2026-10-28 y versionado en `49a4924` mediante el único commit local autorizado; esa autorización quedó consumida y no habilita publicación ni commits posteriores. B06-B fue implementado y validado localmente el 2026-10-28: endpoint `POST /users/:userId/orders/:orderId/cancel`, validación léxica de identificadores, rechazo previo de cualquier body con contenido, traducción exacta de errores y pruebas HTTP con PostgreSQL aislado, sin cambios en el CDU ni en las reglas contables. B06-B-R1 corrigió chunked vacío y escapes de URL malformados; B06-B-R2 corrigió el reconocimiento del pathname en request-targets absolutos. B06-B/R1/R2 fue aceptado tras revisión independiente del 2026-10-28 y versionado en `f760ced` mediante el único commit local autorizado. Esa autorización quedó consumida; no habilita publicación ni commits posteriores. B04-E agrega el puerto y adapter de escritura de una orden preparada dentro del callback bloqueado, conservando UUID y metadatos v1. El usuario autorizó un único commit local de B04-E, sin publicación ni commits posteriores. La suite completa quedó en 45 archivos y 694 pruebas (480 unitarias, 122 de integración y 92 HTTP). El detalle está en [Implementación y validación B04-E](#implementación-y-validación-b04-e), [B05-A](#b05-a--cdu-interno-de-envío), [B06-A](#b06-a--cdu-interno-de-cancelación) y [B06-B](#b06-b--adapter-http-de-cancelación). La revisión final confirmó R1 y R2: B06-B aceptado con 694 pruebas aprobadas, sin nuevos hallazgos y con su único commit local autorizado; sin publicación ni commits posteriores autorizados.
 
 B03/B03-R1 aceptados tras revisión independiente del 2026-10-28: se confirmó la selección por la columna `DATE` nativa (`marketdata.date DESC, marketdata.id DESC`) y la regresión PostgreSQL con `9999-12-31` y `10000-01-01`. Tipos y build correctos, 80 pruebas unitarias sin base activa y 142 pruebas de la suite completa aprobadas con Node 24.22.1. El usuario autorizó un único commit local de B03: `feat(quotes): read latest instrument quote`. La aceptación cubre lectura y selección, sin cerrar F07/Q06 ni AC26–AC28; no hay autorización de publicación ni commits adicionales.
 
@@ -1167,6 +1167,182 @@ Las reproducciones sobre código compilado y bootstrap real confirmaron: chunked
 Las huellas de filas públicas coincidieron antes y después, con conteos 4/66/11/126. Sin esquemas residuales de los bloques ni columnas de idempotencia en public. La comprobación cubre filas, no secuencias. Se retiraron únicamente contenedor de pruebas y red creados para esta revisión. No se modificaron implementación, pruebas, SQL, migraciones, dependencias o configuración durante la revisión.
 
 Continuidad: base `49a4924`; B06-B/R1/R2 aceptado y con el único commit local `feat(orders): expose order cancellation endpoint` autorizado por el usuario después de revisar la entrega concreta. Se comprobó que los 21 archivos coinciden exactamente con la revisión aceptada; solo se actualiza la documentación de autorización antes de versionar. Se conserva la evidencia de 694 pruebas sin repetirlas porque la implementación no cambió. Q07 cerrado e implementación revisada; Q01–Q04/Q06, envío HTTP, recuperación/reintentos y portfolio conservan sus pendientes. Sin autorización de publicación ni implementación directa al coordinador. Próxima acción: materializar el único commit autorizado y preparar el bloque siguiente.
+
+### B05-B — Propuesta del contrato HTTP de envío
+
+Resultado verificable: una propuesta documental breve y completa del adapter POST `/users/:userId/orders`, contrastada con el CDU implementado y con F04/F05/F07. El endpoint todavía no se implementa: Q02 y Q04 conservan definiciones funcionales que afectan directamente a su entrada, respuesta y errores. El usuario pidió el próximo prompt; se selecciona este bloque documental para preparar una decisión concreta sin inventar acuerdos ni detener trabajo independiente.
+
+Debe separar exigencias de la consigna, acuerdos previos, restricciones comprobadas del código y propuestas nuevas. Preparar recomendaciones y alternativas solo cuando la decisión tenga consecuencias: nombres/tipos de campos HTTP, léxico decimal y cantidad, campos omitidos/nulos/desconocidos, identificadores y rangos, política de UUID y cabecera única, proyección de éxito y mapeo de errores. La estructura interna de `OrderIntent` y sus metadatos v1 no define por sí sola el contrato HTTP.
+
+Conservar ruta, BUY/SELL, MARKET/LIMIT, exclusión size/amount, acciones enteras, escala máxima de amount/precio LIMIT, ARS implícito y única moneda, cálculo de cantidad antes de suficiencia sin reducirla, 201 para nueva persistida incluido REJECTED, 200 para recuperar el estado actual incluso CANCELLED y 409 por intención distinta. Idempotencia por usuario con bloqueo antes de lecturas de negocio; no confundir fallos al validar la solicitud con errores al leer metadatos persistidos. No inferir para amount el rango de la columna price ni cambiar el seed, v1 o reglas aprobadas para obtener un contrato más cómodo.
+
+La propuesta debe describir cómo se conecta con el CDU de un intento existente y conservar como pendientes separados recuperación/reintentos, límites y compatibilidad futura; no declara completa la garantía final de órdenes. Portfolio y decisiones no afectadas de Q01/Q03/Q06 quedan fuera. No se crean DTOs, controllers, código, pruebas, configuración o dependencias durante este bloque; validación documental, no pruebas de aplicación.
+
+#### Exigencias de la consigna
+
+- **FUENTE — R03–R07:** el endpoint debe permitir enviar compras `BUY` y ventas `SELL`, de tipo `MARKET` o `LIMIT`; LIMIT requiere precio y MARKET usa el último `close`; se recibe cantidad exacta o monto en pesos y se calculan acciones enteras; la orden se persiste con su estado y valores (consigna, líneas 7, 15–25 y 31). La insuficiencia de pesos o acciones se guarda como `REJECTED` y no produce ejecución.
+- La consigna no prescribe nombres de campos, tipos JSON, gramática decimal, cabecera de idempotencia, proyección pública ni códigos o cuerpos de error. Todo eso son decisiones del proyecto y no se atribuyen a la fuente.
+- **R14:** el test funcional de envío ya está cubierto por las pruebas del CDU con PostgreSQL. Probar el futuro endpoint HTTP es una validación adicional, no una exigencia textual.
+
+#### Acuerdos ya aprobados que esta propuesta conserva
+
+- Ruta `POST /users/:userId/orders`; valores de `side` `BUY`/`SELL`; tipos `MARKET`/`LIMIT`; exactamente uno de `size` o `amount`; acciones enteras por piso exacto; `amount` y precio LIMIT con máximo dos decimales; solo instrumentos `ACCIONES`; ARS implícito y única moneda.
+- UUID del cliente en `Idempotency-Key`; misma cuenta, clave e intención normalizada devuelve 200 con el estado actual, incluso `CANCELLED`; otra intención con la misma clave devuelve 409; una orden nueva se persiste con 201 incluso si queda `REJECTED`; la insuficiencia queda `REJECTED` sin ejecución, reserva ni reducción de cantidad. La comparación incluye instrumento, side, tipo, modo `size`/`amount` y valor original; no se basa solo en cantidad o precio derivados.
+- El bloqueo de la cuenta precede a la lectura de la clave, los recursos y las condiciones de negocio. Una orden cancelada no se reabre. La recuperación no vuelve a calcular precio ni disponibilidad.
+- 201, 200 y 409 están confirmados. Los 400/404 de F05 y el resto de códigos, cuerpos y mensajes siguen siendo propuesta. Esta sección no cierra Q02/Q04.
+
+#### Restricciones comprobadas del código
+
+Inspección del código y comprobación puntual del comportamiento de `decimal.js` el 2026-10-28; no se ejecutaron pruebas de aplicación en este bloque.
+
+- `SubmitOrderInput` recibe `userId`, `idempotencyKey`, `intent` y `currency?`; la salida es `{ orderId, status, replayed }`. Son contratos internos, sin tipos HTTP.
+- `createOrderIntent` exige `instrumentId` numérico, entero seguro y positivo; `side` y `type` exactos; exactamente uno de `size`/`amount`; y `size`, `amount` y `limitPrice` como strings positivos, con `size` entero y escala efectiva máxima de dos decimales. Trata `null` y la ausencia como equivalentes en esos tres campos opcionales.
+- El modelo interno no impone la gramática HTTP: `decimal.js` acepta exponentes, signo `+`, `.5`, `10.`, ceros iniciales, `0x10` y `1_000`. El adapter debe validar el léxico antes de construir la intención; no puede delegarlo en `createOrderIntent`.
+- `resolveOrderSize` conserva una cantidad explícita o calcula el piso exacto de `amount / price`; rechaza cero y valores fuera de `INT` (`2147483647`).
+- `createPreparedOrder` exige UUID con forma `8-4-4-4-12` hexadecimal, sin clasificar versión ni variante, y lo normaliza a minúsculas. El precio debe cumplir `^\d+(?:\.\d+)?$`, ser positivo, tener escala efectiva máxima de dos decimales y no superar ocho dígitos enteros, límite de `NUMERIC(10, 2)`.
+- `PostgresPersistedOrderRepository` busca con `idempotency_key = $2::uuid`; un UUID malformado llegaría a PostgreSQL como error técnico. `SubmitOrderService` no valida la clave antes de esa lectura, por lo que el adapter debe rechazarla.
+- `PersistedOrder` solo expone `id`, `userId`, `idempotencyKey`, `status` e `intentMetadata`: no hay tamaño, precio ni fecha disponibles para la respuesta sin ampliar la lectura.
+- `SubmitOrderError` distingue `unsupported-currency`, `conflict`, `account-not-found`, `instrument-not-found`, `instrument-not-tradable`, `quote-unavailable`, `quote-invalid` y `quantity-not-representable`. `OrderIntentError` también puede provenir de metadatos persistidos inválidos o de versión desconocida. No son códigos HTTP.
+- El `ValidationPipe` global usa `whitelist`, `forbidNonWhitelisted` y `transform`: un campo desconocido produce 400, pero `@IsOptional` por sí solo trataría `null` como ausente. El adapter debe rechazar `null` explícitamente.
+- `OrdersModule` registra `SUBMIT_ORDER_USE_CASE` y `CLOCK`, pero no tiene controller, DTO ni filtro de envío.
+
+#### Propuesta nueva — pendiente de aprobación
+
+| Tema | Recomendación | Alternativa | Consecuencia concreta | Fuente |
+| --- | --- | --- | --- | --- |
+| 1. Body, tipos, obligatoriedad, `null` y desconocidos | Objeto JSON plano con `instrumentId` (número entero), `side` y `type` (strings exactos), exactamente uno de `size` (número entero) o `amount` (string decimal) y `price` (string decimal, solo LIMIT). Sin campo `currency`: ARS implícito. `null` se rechaza en todo campo; el JSON malformado, los desconocidos y las raíces que no sean objeto devuelven 400. | Envolver el body en `{ "order": { ... } }` o aceptar `currency: "ARS"`. Añade superficie y validación sin cambiar el comportamiento. | Contrato mínimo y explícito; `currency`, `limitPrice`, `ticker` o `userId` en el body producen 400. Un `null` no se interpreta como campo ausente. | Consigna, líneas 7 y 15; F04/F05; `SubmitOrderInput`; `configure-http.ts`. |
+| 2. Representación de `size`, `amount` y `price` | `size` es número entero JSON de 1 a 2147483647. `amount` y `price` son strings con gramática `^\d+(\.\d{1,2})?$`, valor positivo, sin signo, exponente, espacios, coma, `0x` ni `_`; escala escrita máxima de dos dígitos. Ceros iniciales admitidos y normalizados; la escala escrita manda sobre la efectiva. `price` admite hasta ocho dígitos enteros del valor normalizado; `amount` no hereda ese límite. | Aceptar los tres como strings; aceptar escala efectiva (admitiría `10.000`); o admitir exponentes. | `10`, `10.0` y `10.00` son equivalentes; también `10.1` y `10.10`. `10.000` devuelve 400 con la escala escrita, aunque el modelo interno lo aceptaría. Al ser número JSON, `size: 3.0` y `size: 1e3` colapsan a 3 y 1000: no se rechazan por léxico. El adapter convierte `size` al string canónico antes de B04-C. `amount` solo queda acotado por la cantidad entera resultante, no por `NUMERIC(10, 2)`. | F04, líneas 53–58 y AC07; `order-intent.ts`; `prepared-order.ts`; `order-quantity.ts`; Q02 abierta. |
+| 3. Identificadores y representabilidad | `userId` de ruta: dígitos ASCII, ceros iniciales admitidos y valor de 1 a 2147483647. `instrumentId` de body: número entero de 1 a 2147483647, rango de `SERIAL`/`INT`. `size`: 1 a 2147483647, rango de `orders.size`. `price`: máximo ocho dígitos enteros del valor normalizado. `amount`: sin rango propio; se valida la cantidad resultante. `order.id` se devuelve como número. | Usar solo el rango de entero seguro del modelo interno para `instrumentId`, o aceptar `ticker` en lugar de id. | Un identificador fuera de `INT` devuelve 400 en vez de provocar un error de PostgreSQL. Un `amount` grande que produzca cantidad cero o mayor que `INT` devuelve 400 sin fila. | `database.sql`; `order-quantity.ts`; `prepared-order.ts`; regla de ids de B06-B. |
+| 4. UUID en `Idempotency-Key` | Cabecera obligatoria y única (nombre sin distinguir mayúsculas): `8-4-4-4-12` hexadecimal, valor sin distinguir mayúsculas, normalizado a minúsculas antes del CDU. Se admite el UUID nulo y cualquier versión o variante; no se admiten llaves, prefijo `urn:uuid:`, forma compacta ni espacios. Ausencia, repetición, valores unidos por coma o valores malformados devuelven 400 antes de la transacción. | Exigir versión/variante RFC 9562; devolver 428 si falta; aceptar la primera de varias cabeceras. | Coincide con la regex de `createPreparedOrder` y evita que un UUID inválido llegue a `$2::uuid`. La cabecera repetida se rechaza de forma determinista. | F05; `prepared-order.ts`; `postgres-persisted-order.repository.ts`. |
+| 5. Proyección de éxito y recuperación | Nueva orden: 201 con `{ "order": { "id": <número>, "status": <estado> } }`. Recuperación: 200 con la misma forma y el estado actual, incluido `CANCELLED`. Sin `replayed`, sin `Location` y sin tamaño, precio ni fecha. Un 201 nunca devuelve `CANCELLED`; un 200 puede devolver cualquiera de los cuatro estados. | Añadir `replayed` o proyectar la orden completa. Requiere ampliar `PersistedOrder` y el contrato público; no se recomienda en este bloque. | 200/201 distinguen recuperación de creación; la recuperación no relee cotización ni recursos. La forma mínima está respaldada por la salida actual del CDU. | B05-A; `PersistedOrder`; F05/E10; respuesta de F08. |
+| 6. Errores internos a HTTP | 400 para validación de la solicitud, escala, modo, precio, UUID, rango de ids, `instrument-not-tradable` y `quantity-not-representable`; 404 para cuenta o instrumento inexistente; 409 para conflicto de intención; 500 para cotización ausente o inválida, metadatos persistidos, persistencia, transacción y fallos desconocidos. La insuficiencia no es error: 201/200 con `REJECTED`. | 503 para cotización ausente o inválida; 404 también para instrumento no operable; 422 para cantidad no representable. | Ningún error expone detalles internos. Un `OrderIntentError` que escape del CDU es 500, no 400. Un COMMIT incierto es 500 y no afirma rollback. | F05/F07; `SubmitOrderError`; `order-intent-metadata.ts`; estilo de `CancelOrderExceptionFilter`. |
+
+La regla de ids de ruta y el envoltorio `order` se proponen por consistencia con B06-B; no se consideran extensiones automáticas del contrato de cancelación. Del mismo modo, `SubmitOrderInput`/`SubmitOrderOutput` y los metadatos v1 son referencias internas, no la definición del contrato HTTP.
+
+#### Esquema del body propuesto
+
+| Campo | Tipo JSON | Obligatoriedad | Regla |
+| --- | --- | --- | --- |
+| `instrumentId` | número entero | sí | 1 a 2147483647; sin string ni `null`; es el id estable del catálogo, no el ticker. |
+| `side` | string | sí | `BUY` o `SELL`, exactos. |
+| `type` | string | sí | `MARKET` o `LIMIT`, exactos. |
+| `size` | número entero | exactamente uno con `amount` | 1 a 2147483647; sin fracción, cero, signo ni `null`. |
+| `amount` | string decimal | exactamente uno con `size` | `^\d+(\.\d{1,2})?$`; mayor que cero; sin exponente, sin tope de ocho dígitos enteros ni `null`. |
+| `price` | string decimal | obligatorio en LIMIT; prohibido en MARKET | Misma gramática; mayor que cero; máximo ocho dígitos enteros del valor normalizado; sin `null`. |
+| `currency` | — | no se expone | ARS implícito; un campo `currency` es desconocido y devuelve 400. |
+| Otros | — | prohibidos | Cualquier campo no listado devuelve 400. |
+
+El campo HTTP `price` se mapea al `limitPrice` de la intención interna; `instrumentId`, `side` y `type` conservan su nombre. `size` se convierte al string canónico que exige B04-C.
+
+#### Proyección de éxito
+
+- **Creación:** 201 con `{ "order": { "id": <número>, "status": "FILLED" | "NEW" | "REJECTED" } }`. `REJECTED` por insuficiencia también es 201.
+- **Recuperación:** 200 con `{ "order": { "id": <número>, "status": "NEW" | "FILLED" | "REJECTED" | "CANCELLED" } }`. Devuelve el estado actual y no reabre ni vuelve a reservar.
+- No se devuelve `replayed`, `Location`, `size`, `price`, `type`, `side`, `instrumentId` ni `datetime`. La lectura actual de una orden no dispone de esos valores; ampliarla es otro bloque.
+- La diferencia es únicamente el código: 201 implica una fila nueva confirmada; 200 implica una clave ya persistida con la misma intención normalizada.
+- El envoltorio `order` se propone por consistencia con la respuesta de cancelación; no se deduce automáticamente de F08.
+
+#### Mapeo de errores propuesto
+
+| Origen | Condición | HTTP | Mensaje público | Nota |
+| --- | --- | --- | --- | --- |
+| Adapter HTTP | JSON malformado, forma, tipos, `null`, desconocidos, léxico, escala, modo, precio, UUID, ruta o rango de ids | 400 | `Invalid request.` | Antes del CDU y de la transacción; no lee base ni cotización. |
+| `SubmitOrderError` | `unsupported-currency` | 400 | `Invalid request.` | Defensivo: el contrato propuesto no expone `currency`. |
+| `SubmitOrderError` | `account-not-found` | 404 | `User or instrument not found.` | Usuario de ruta inexistente. |
+| `SubmitOrderError` | `instrument-not-found` | 404 | `User or instrument not found.` | Solo con clave nueva; la recuperación y el conflicto preceden. |
+| `SubmitOrderError` | `instrument-not-tradable` | 400 | `Invalid request.` | Instrumento existente que no es `ACCIONES`, por ejemplo ARS/MONEDA. |
+| `SubmitOrderError` | `quote-unavailable` | 500 | `Order could not be completed.` | Dato de mercado ausente; no crea fila ni consume el UUID. |
+| `SubmitOrderError` | `quote-invalid` | 500 | `Order could not be completed.` | `close` no finito o no positivo; sin fallback. |
+| `SubmitOrderError` | `quantity-not-representable` | 400 | `Invalid request.` | Cantidad calculada cero o fuera de `INT`; no persiste ni reserva. |
+| `SubmitOrderError` | `conflict` | 409 | `The idempotency key was already used with a different request.` | No modifica la orden previa. |
+| `OrderIntentError` | `invalid-metadata` o `unsupported-metadata-version` | 500 | `Order could not be completed.` | Falla al interpretar metadatos persistidos; no es un error del cliente. |
+| `OrderIntentError` | Otros códigos que escapen del CDU | 500 | `Order could not be completed.` | El adapter ya validó la solicitud; es un invariante o un fallo interno. |
+| Errores tipados de persistencia, transacción o mapeo | `PreparedOrderError`, `PreparedOrderPersistenceError`, `PersistedOrderMappingError`, `AccountTransactionError` | 500 | `Order could not be completed.` | Diagnóstico sanitizado; un COMMIT incierto no se presenta como rollback. |
+| B02 | Recursos insuficientes | 201 o 200 | Cuerpo con `status: "REJECTED"` | Resultado de negocio persistido, no error HTTP. |
+
+- El filtro no debe traducir todo `OrderIntentError` a 400: la validación de la solicitud debe usar una excepción propia del adapter. Un error de metadatos persistidos siempre es 500.
+- El adapter construye el `OrderIntent` canónico con B04-C después de su validación léxica; un fallo de B04-C en ese paso es 400 y no llega al filtro como error de metadatos.
+- Las `BadRequestException` del `ValidationPipe` (campos desconocidos, tipos o validadores) y el error del parser JSON se traducen al mismo 400 genérico; no se acepta el formato por defecto de Nest/Express.
+- Los 500 se registran con `sanitizeDiagnostic`; no exponen SQL, nombres de columnas, causas del driver ni trazas. El mensaje público es siempre el mismo.
+- Alternativas no adoptadas: 503 para cotización ausente o inválida (implicaría una indisponibilidad temporal que no está demostrada); 404 también para instrumento no operable (ocultaría la diferencia sin aportar seguridad); 422 para cantidad no representable (el proyecto ya usa 400 para entradas inválidas).
+
+#### Precedencia propuesta
+
+1. Validación de ruta, `Idempotency-Key` y body en el adapter, y construcción del `OrderIntent` canónico con B04-C: 400 sin abrir transacción ni leer base.
+2. Inicio de la transacción y bloqueo de la cuenta: usuario inexistente, 404.
+3. Clave existente: metadatos inválidos, 500; intención distinta, 409; coincidencia, 200 con el estado actual. En este camino no se leen instrumento, cotización ni recursos.
+4. Clave nueva: instrumento inexistente, 404; no operable, 400; cotización ausente o inválida, 500; cantidad no representable, 400; insuficiencia, 201 con `REJECTED`; éxito, 201 con `NEW` o `FILLED`.
+5. Fallo técnico o COMMIT incierto: 500. No se afirma que la orden no se haya creado.
+
+La recuperación también debe superar el paso 1: si en el futuro se endurecen las reglas de entrada, una solicitud antigua podría fallar antes de llegar a la comparación idempotente. Esa compatibilidad sigue pendiente.
+
+#### Ejemplos mínimos propuestos
+
+1. LIMIT BUY por cantidad:
+
+```http
+POST /users/1/orders
+Idempotency-Key: 3f0c9a52-7d1e-4b6a-9c2f-8a1b2c3d4e5f
+Content-Type: application/json
+
+{"instrumentId":47,"side":"BUY","type":"LIMIT","size":10,"price":"10.10"}
+```
+
+Con recursos suficientes responde `201` con `{"order":{"id":12,"status":"NEW"}}`; si no alcanzan, el mismo `201` devuelve `REJECTED`.
+
+2. MARKET SELL por monto:
+
+```http
+POST /users/1/orders
+Idempotency-Key: 8b1d4c2e-5f6a-4d7b-8c9e-0a1b2c3d4e5f
+Content-Type: application/json
+
+{"instrumentId":47,"side":"SELL","type":"MARKET","amount":"1000.00"}
+```
+
+La cantidad es el piso exacto de `1000.00 / close`; si es al menos una acción y hay acciones suficientes, responde `201` y `FILLED`; si hay acciones insuficientes, `201` y `REJECTED`, sin reducir la cantidad; si el piso es cero, `400`.
+
+3. Recuperación con la misma clave e intención:
+
+```http
+POST /users/1/orders
+Idempotency-Key: 3f0c9a52-7d1e-4b6a-9c2f-8a1b2c3d4e5f
+Content-Type: application/json
+
+{"instrumentId":47,"side":"BUY","type":"LIMIT","size":10,"price":"10.10"}
+```
+
+Si la orden 12 fue cancelada después, responde `200` con `{"order":{"id":12,"status":"CANCELLED"}}`, sin reabrirla ni reservar de nuevo.
+
+4. Errores:
+
+- Sin `Idempotency-Key`: `400` `{"message":"Invalid request."}`.
+- `"amount":"10.000"`: `400` por escala escrita; la alternativa de escala efectiva lo aceptaría.
+- MARKET con `price`: `400`; LIMIT sin `price`: `400`.
+- Misma clave con `amount` distinto: `409` `{"message":"The idempotency key was already used with a different request."}`.
+- MARKET sobre un instrumento sin fila de `marketdata` utilizable: `500` `{"message":"Order could not be completed."}`, sin fila ni consumo del UUID.
+
+#### Detalles nuevos de esta propuesta
+
+- Nombres y tipos del body plano, incluido `size` como número JSON y `amount`/`price` como strings; ausencia total de `currency`.
+- Gramática decimal estricta con escala escrita máxima de dos dígitos y rechazo de exponentes, signos, espacios, comas, `0x` y `_`.
+- Rechazo explícito de `null` en todos los campos y de cualquier campo desconocido.
+- Límites de `instrumentId` y `userId` al rango `INT`, de `size` al máximo de `orders.size`, de `price` a ocho dígitos enteros y ausencia de rango propio para `amount`.
+- Formato, normalización y unicidad de `Idempotency-Key`, incluida la cabecera repetida.
+- Proyección mínima `{ "order": { "id", "status" } }`, sin `replayed`, `Location` ni otros campos.
+- Códigos y mensajes públicos propuestos, en particular 400 para instrumento no operable y cantidad no representable, 404 unificado para cuenta o instrumento inexistente, 409 con mensaje específico y 500 para cotización y metadatos persistidos.
+- Separación entre la validación del adapter y los errores al interpretar metadatos persistidos: `OrderIntentError` nunca se traduce a 400 por el solo hecho de su nombre.
+
+#### Límites y pendientes
+
+- Q02 y Q04 siguen abiertos: esta sección no cierra la sintaxis decimal, los rangos, la compatibilidad entre versiones, la recuperación automática, los reintentos ni los límites temporales. Aprobar la propuesta sería una decisión nueva.
+- No se implementan reintentos automáticos, recuperación de COMMIT incierto, backoff ni timeouts. El endpoint haría un único intento; ante un COMMIT incierto devolvería 500 sin afirmar rollback. Repetir con la misma clave es la vía prevista, pero no se promete que el servidor lo haga solo.
+- No se promete compatibilidad futura de la validación HTTP ni de los metadatos v1. Una versión desconocida o inválida es 500, no una coincidencia ni un conflicto.
+- No hay autenticación: el `userId` de la ruta no acredita identidad ni propiedad. Portfolio, transferencias nuevas, cambios de esquema, seed o metadatos v1 quedan fuera.
+- No se fija un máximo de dígitos para `amount`; el límite de transporte del body de Express es técnico y no forma parte del contrato de negocio.
+- La evidencia de 694 pruebas pertenece a B06-B/R1/R2 y no se reejecutó para esta propuesta. No hay pruebas del endpoint de envío porque no existe implementación HTTP.
+
+Estado: propuesta documental entregada y versionada localmente el 2026-10-28; pendiente de aprobación. No se implementó código, DTO, controller, prueba, configuración ni dependencia. Q02/Q04 y los pendientes de recuperación, reintentos, límites y compatibilidad siguen abiertos. Commit local de la propuesta; sin push, PR ni merge.
 
 ## Revisión del diseño de alto nivel
 
