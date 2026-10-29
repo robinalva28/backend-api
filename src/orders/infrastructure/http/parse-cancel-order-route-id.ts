@@ -1,31 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { INVALID_CANCEL_REQUEST_MESSAGE } from './http-messages.js';
-
-const MAX_INT32 = '2147483647';
+import { parsePositiveInt32RouteId } from './parse-route-id.js';
 
 /**
- * Parses a route identifier lexically before converting it to a number.
- * Only ASCII digits are accepted, leading zeroes are allowed and the value
- * must fit the positive INT range used by the database.
+ * Parses a cancellation route identifier with the shared positive INT rule.
  */
 export function parseCancelOrderRouteId(value: string): number | null {
-  if (!/^[0-9]+$/.test(value)) {
-    return null;
-  }
-
-  const normalized = value.replace(/^0+/, '');
-
-  if (
-    normalized.length === 0 ||
-    normalized.length > MAX_INT32.length ||
-    (normalized.length === MAX_INT32.length && normalized > MAX_INT32)
-  ) {
-    return null;
-  }
-
-  const parsed = Number(normalized);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  return parsePositiveInt32RouteId(value);
 }
 
 /**
@@ -38,7 +19,7 @@ export function requireCancelOrderRouteId(value: unknown): number {
     throw invalidRequest();
   }
 
-  const parsed = parseCancelOrderRouteId(value);
+  const parsed = parsePositiveInt32RouteId(value);
 
   if (parsed === null) {
     throw invalidRequest();

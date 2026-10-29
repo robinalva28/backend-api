@@ -6,6 +6,8 @@ import { CancelOrderService } from './application/cancel-order.service.js';
 import { SubmitOrderService } from './application/submit-order.service.js';
 import type { Clock } from './application/ports/out/clock.port.js';
 import { CancelOrderController } from './infrastructure/http/cancel-order.controller.js';
+import { SubmitOrderBodyPipe } from './infrastructure/http/submit-order-body.pipe.js';
+import { SubmitOrderController } from './infrastructure/http/submit-order.controller.js';
 import { SystemClock } from './infrastructure/system-clock.js';
 import {
   CANCEL_ORDER_USE_CASE,
@@ -15,8 +17,9 @@ import {
 
 @Module({
   imports: [TransactionsModule],
-  controllers: [CancelOrderController],
+  controllers: [SubmitOrderController, CancelOrderController],
   providers: [
+    SubmitOrderBodyPipe,
     {
       provide: CLOCK,
       useFactory: (): Clock => new SystemClock(),
