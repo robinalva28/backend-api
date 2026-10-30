@@ -1,7 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { serve, setup } from 'swagger-ui-express';
+import type { SwaggerUiOptions } from 'swagger-ui-express';
 import { OPENAPI_DOCUMENT } from './openapi.document.js';
+import {
+  SWAGGER_UUID_HELPER_CSS,
+  SWAGGER_UUID_HELPER_SCRIPT,
+} from './swagger-uuid-helper.js';
 
 const OPENAPI_PATH = '/openapi.json';
 const OPENAPI_UI_URL = '../openapi.json';
@@ -40,15 +45,17 @@ export function configureDocumentation(app: INestApplication): void {
     },
   );
 
-  app.use(
-    DOCS_PATH,
-    ...serve,
-    setup(undefined, {
-      customSiteTitle: 'backend API',
-      swaggerOptions: {
-        url: OPENAPI_UI_URL,
-        validatorUrl: null,
-      },
-    }),
-  );
+  // `customJsStr` is supported at runtime but missing from
+  // @types/swagger-ui-express 4.1.8.
+  const uiOptions: SwaggerUiOptions & { customJsStr?: string } = {
+    customSiteTitle: 'backend API',
+    customJsStr: SWAGGER_UUID_HELPER_SCRIPT,
+    customCss: SWAGGER_UUID_HELPER_CSS,
+    swaggerOptions: {
+      url: OPENAPI_UI_URL,
+      validatorUrl: null,
+    },
+  };
+
+  app.use(DOCS_PATH, ...serve, setup(undefined, uiOptions));
 }
