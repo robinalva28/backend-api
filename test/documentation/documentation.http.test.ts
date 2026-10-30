@@ -50,6 +50,9 @@ describe('documentation endpoints', () => {
     expect(response.text).toContain('./swagger-ui-bundle.js');
     expect(response.text).toContain('./swagger-ui-standalone-preset.js');
     expect(response.text).toContain('./swagger-ui-init.js');
+    expect(response.text).toContain('swagger-uuid-helper');
+    expect(response.text).toContain('Generar UUID');
+    expect(response.text).toContain('Copiar');
     expect(response.text).not.toMatch(/(?:src|href)="https?:\/\//);
   });
 
