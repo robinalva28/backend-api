@@ -30,6 +30,7 @@ import { TransactionsModule } from './transactions/transactions.module.js';
         );
 
         readPostgresConfig({
+          NODE_ENV: readOptionalString(environment, 'NODE_ENV'),
           DATABASE_URL: readOptionalString(environment, 'DATABASE_URL'),
           PGSSLROOTCERT: readOptionalString(environment, 'PGSSLROOTCERT'),
           PGHOST: readOptionalString(environment, 'PGHOST'),

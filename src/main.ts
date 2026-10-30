@@ -26,6 +26,7 @@ async function bootstrap(): Promise<void> {
   const logger = getOperationalLogger();
   const port = config.getOrThrow<number>('PORT');
   const connectionMode = postgresConnectionMode({
+    NODE_ENV: config.get<string>('NODE_ENV'),
     DATABASE_URL: config.get<string>('DATABASE_URL'),
   });
   const slowRequestThresholdMs = config.getOrThrow<number>(

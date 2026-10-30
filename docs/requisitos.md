@@ -28,7 +28,7 @@ La revisión de entrega del 2026-10-30 no identificó funcionalidad obligatoria 
 
 - **B09 — OpenAPI/Swagger:** implementado y versionado en `1fa1645`. Revisión independiente de las correcciones B09-R1 completada el 2026-10-30 mediante inspección, suites y smoke de la imagen runtime. No se realizó una revisión visual interactiva.
 - **CI estático:** versionado en `e8578e1`; validación local registrada en el plan. Una ejecución remota de Actions sigue pendiente.
-- **Conexión remota, migración y logging:** implementados en el árbol de trabajo y revisados localmente. Conexión TLS y endpoints de lectura remotos aprobados. Migración remota aplicada y repetida sin cambios; dos columnas y tres restricciones verificadas, 11 órdenes existentes preservadas. Sin pruebas POST sobre la base remota.
+- **Conexión remota, migración y logging:** implementados en el árbol de trabajo y revisados localmente. Conexión TLS y endpoints de lectura remotos aprobados. Migración remota aplicada y repetida sin cambios; dos columnas y tres restricciones verificadas, 11 órdenes existentes preservadas. Sin pruebas POST sobre la base remota. Ejecución normal exclusivamente remota: `DATABASE_URL` obligatoria y sin fallback; el acceso local se limita a `NODE_ENV=test` para pruebas aisladas.
 - **Inicio rápido:** verificado con imagen runtime, volumen local vacío, migración y recorrido de búsqueda, portfolio, creación, replay, conflicto y cancelación. La migración sigue siendo manual.
 
 ## Opcionales, libertades y límites

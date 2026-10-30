@@ -53,6 +53,7 @@ describe('DatabaseModule', () => {
           ignoreEnvVars: true,
           load: [
             () => ({
+              NODE_ENV: 'test',
               PGHOST: 'db.internal',
               PGPORT: '5433',
               PGDATABASE: 'backend_api_test',

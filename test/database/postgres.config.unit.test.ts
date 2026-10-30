@@ -9,9 +9,27 @@ import {
 } from '../../src/database/postgres.config.js';
 
 describe('readPostgresConfig', () => {
+  it.each([undefined, 'production', 'development', ''])(
+    'requires DATABASE_URL outside test mode (%s), even with valid local settings',
+    (NODE_ENV) => {
+      const environment = {
+        NODE_ENV,
+        PGHOST: '127.0.0.1',
+        PGDATABASE: 'backend_api',
+        PGUSER: 'backend_api',
+        PGPASSWORD: 'local-password',
+      };
+      expect(() => readPostgresConfig(environment)).toThrow(
+        'DATABASE_URL is required outside NODE_ENV=test.',
+      );
+      expect(() => postgresConnectionMode(environment)).toThrow(/DATABASE_URL/);
+    },
+  );
+
   it('builds an explicit pool configuration from the environment', () => {
     expect(
       readPostgresConfig({
+        NODE_ENV: 'test',
         PGHOST: 'db.internal',
         PGPORT: '5433',
         PGDATABASE: 'backend_api_test',
@@ -27,11 +45,11 @@ describe('readPostgresConfig', () => {
     });
   });
 
-  it('uses the local defaults when the variables are absent', () => {
-    expect(readPostgresConfig({})).toEqual({
+  it('uses isolated local defaults only in test mode', () => {
+    expect(readPostgresConfig({ NODE_ENV: 'test' })).toEqual({
       host: '127.0.0.1',
       port: 5432,
-      database: 'backend_api',
+      database: 'backend_api_test',
       user: 'backend_api',
       password: 'backend-api-local',
     });
@@ -226,9 +244,10 @@ describe('readPostgresConfig', () => {
     ).toThrow(/PGSSLROOTCERT could not be read/);
   });
 
-  it('does not fall back to the local PG variables when the remote URL fails', () => {
+  it('does not fall back to local PG variables even in test mode when the remote URL fails', () => {
     expect(() =>
       readPostgresConfig({
+        NODE_ENV: 'test',
         DATABASE_URL: '',
         PGHOST: 'db.internal',
         PGDATABASE: 'backend_api_test',
@@ -243,6 +262,7 @@ describe('readPostgresConfig', () => {
     (port) => {
       expect(() =>
         readPostgresConfig({
+          NODE_ENV: 'test',
           PGPORT: port,
         }),
       ).toThrow(/PGPORT/);
@@ -254,6 +274,7 @@ describe('readPostgresConfig', () => {
     (variable) => {
       expect(() =>
         readPostgresConfig({
+          NODE_ENV: 'test',
           [variable]: '   ',
         }),
       ).toThrow(new RegExp(variable));
@@ -262,8 +283,8 @@ describe('readPostgresConfig', () => {
 });
 
 describe('postgresConnectionMode', () => {
-  it('reports local mode only when DATABASE_URL is absent', () => {
-    expect(postgresConnectionMode({})).toBe('local');
+  it('reports local mode only for explicit tests without DATABASE_URL', () => {
+    expect(postgresConnectionMode({ NODE_ENV: 'test' })).toBe('local');
     expect(
       postgresConnectionMode({
         DATABASE_URL: 'postgresql://user:password@host/database',
