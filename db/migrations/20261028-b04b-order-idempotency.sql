@@ -11,11 +11,16 @@
 -- Incomplete or incompatible schema: raises an exception; the transaction
 -- rolls back without partial changes.
 --
+-- Lock acquisition is bounded to five seconds. A lock timeout aborts the
+-- transaction without leaving partial DDL changes.
+--
 -- Metadata envelope (technical choice):
 --   {"version": <positive integer>, "parameters": <JSON object>}
 -- The version identifies the metadata format. The parameters object is
 -- intentionally open; its complete semantic structure is not defined here.
 -- Decimal values inside parameters must be stored as JSON strings.
+
+SET LOCAL lock_timeout = '5s';
 
 LOCK TABLE orders IN ACCESS EXCLUSIVE MODE;
 
