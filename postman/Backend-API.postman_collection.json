@@ -1,0 +1,1453 @@
+{
+  "info": {
+    "name": "Backend-API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Ordered local seed walkthrough. Run all folders in order with Local selected, one iteration. Start flow initializes UUIDs once; later requests preserve saved keys/bodies. Only captured created IDs can be cancelled. MARKET trades and REJECTED/CANCELLED rows persist. Loopback guards cannot establish database locality: verify the effective app database before running. OpenAPI remains the authoritative contract; see README."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const base = pm.environment.get('baseUrl');",
+          "if (!/^http:\\/\\/(127\\.0\\.0\\.1|localhost):[0-9]+$/.test(base || '')) {",
+          "  pm.execution.skipRequest(); throw new Error('Select Local environment with an explicit HTTP loopback baseUrl and port. Verify its database separately.');",
+          "}",
+          "for (const key of ['userId','instrumentId']) {",
+          "  const n = Number(pm.environment.get(key));",
+          "  if (!Number.isInteger(n) || n < 1 || n > 2147483647) { pm.execution.skipRequest(); throw new Error('Invalid environment '+key); }",
+          "  pm.variables.set(key, String(n));",
+          "}",
+          "pm.variables.set('baseUrl', base);",
+          "const context = pm.collectionVariables.get('flowContext');",
+          "if (context && pm.info.requestName !== '01 Start flow — clear state and snapshot portfolio' && context !== JSON.stringify([base, pm.environment.get('userId'), pm.environment.get('instrumentId')])) {",
+          "  pm.execution.skipRequest(); throw new Error('Environment changed during flow. Restore the original target before replay or cancellation.');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('JSON response', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));"
+        ]
+      }
+    }
+  ],
+  "variable": [],
+  "item": [
+    {
+      "name": "1 Search",
+      "item": [
+        {
+          "name": "Search by ticker",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 instrument search by ticker', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const rows = pm.response.json();",
+                  "  pm.expect(rows).to.be.an('array').that.is.not.empty;",
+                  "  rows.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('id','ticker','name');",
+                  "    pm.expect(Number.isInteger(x.id) && x.id > 0).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "  });",
+                  "  pm.expect(rows.some(x => x.id === Number(pm.environment.get('instrumentId')) && x.ticker.toLowerCase().includes('pamp'))).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/instruments?query=pamp",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Search by name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 instrument search by name', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const rows = pm.response.json();",
+                  "  pm.expect(rows).to.be.an('array').that.is.not.empty;",
+                  "  rows.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('id','ticker','name');",
+                  "    pm.expect(Number.isInteger(x.id) && x.id > 0).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "  });",
+                  "  pm.expect(rows.some(x => x.id === Number(pm.environment.get('instrumentId')) && x.name.toLowerCase().includes('holding'))).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/instruments?query=holding",
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 Chained BUY LIMIT lifecycle",
+      "item": [
+        {
+          "name": "01 Start flow — clear state and snapshot portfolio",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Only this request starts new operations. Replays and resends preserve the saved keys/bodies.",
+                  "for (const key of ['baseline','flowKey','flowBody','flowConflictBody','orderId','marketBuyKey','marketBuyBody','marketSellKey','marketSellBody','sellLimitKey','sellLimitBody','sellLimitOrderId','rejectBuyKey','rejectBuyBody','rejectSellKey','rejectSellBody','invalidKey','invalidBody','missingKey','missingBody','flowContext']) pm.collectionVariables.unset(key);",
+                  "const instrumentId = Number(pm.environment.get('instrumentId'));",
+                  "pm.collectionVariables.set('flowContext', JSON.stringify([pm.environment.get('baseUrl'), pm.environment.get('userId'), pm.environment.get('instrumentId')]));",
+                  "const operations = {",
+                  "  flow: {instrumentId, side:'BUY', type:'LIMIT', size:3, price:'10.00'},",
+                  "  marketBuy: {instrumentId, side:'BUY', type:'MARKET', size:1},",
+                  "  marketSell: {instrumentId, side:'SELL', type:'MARKET', amount:'1000.00'},",
+                  "  sellLimit: {instrumentId, side:'SELL', type:'LIMIT', amount:'1000.00', price:'300.00'},",
+                  "  rejectBuy: {instrumentId, side:'BUY', type:'LIMIT', size:2147483647, price:'10.00'},",
+                  "  rejectSell: {instrumentId, side:'SELL', type:'MARKET', size:2147483647},",
+                  "  invalid: {instrumentId, side:'BUY', type:'MARKET', size:'1'},",
+                  "  missing: {instrumentId:2147483647, side:'BUY', type:'MARKET', size:1}",
+                  "};",
+                  "for (const [name, body] of Object.entries(operations)) {",
+                  "  pm.collectionVariables.set(name+'Key', pm.variables.replaceIn('{{$guid}}'));",
+                  "  pm.collectionVariables.set(name+'Body', JSON.stringify(body));",
+                  "}",
+                  "pm.collectionVariables.set('flowConflictBody', JSON.stringify({...operations.flow, size:4}));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Seed resources cover examples; save baseline', () => {",
+                  "  const p = pm.response.json();",
+                  "  const cents = BigInt(p.availableCash.replace('.', ''));",
+                  "  pm.expect(cents >= 100000n).to.equal(true);",
+                  "  const position = p.positions.find(x => x.instrumentId === Number(pm.environment.get('instrumentId')));",
+                  "  pm.expect(position.quantity).to.be.at.least(3);",
+                  "  pm.collectionVariables.set('baseline', JSON.stringify(p));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": "Starts fresh operations and clears previous correlation variables. Run once per new collection run, never to recover an uncertain submission."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Create BUY LIMIT by size",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('flowKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowKey missing.'); }",
+                  "pm.variables.set('flowKey', pm.collectionVariables.get('flowKey'));",
+                  "if (!pm.collectionVariables.get('flowBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowBody missing.'); }",
+                  "pm.variables.set('flowBody', pm.collectionVariables.get('flowBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / NEW, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('NEW');",
+                  "  pm.collectionVariables.set('orderId', String(data.order.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{flowKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "Reserves 3 × ARS 10.00; only a valid 201 NEW stores orderId. Resend via the replay request after an uncertain response.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{flowBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Portfolio — reservation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Exactly 30.00 reserved; no executed holdings or total change', () => {",
+                  "  const before = JSON.parse(pm.collectionVariables.get('baseline'));",
+                  "  const after = pm.response.json();",
+                  "  pm.expect(BigInt(before.availableCash.replace('.', '')) - BigInt(after.availableCash.replace('.', ''))).to.equal(3000n);",
+                  "  pm.expect(after.totalValue).to.equal(before.totalValue);",
+                  "  pm.expect(after.positions).to.deep.equal(before.positions);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "04 Replay exact UUID and original body",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('flowKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowKey missing.'); }",
+                  "pm.variables.set('flowKey', pm.collectionVariables.get('flowKey'));",
+                  "if (!pm.collectionVariables.get('flowBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowBody missing.'); }",
+                  "pm.variables.set('flowBody', pm.collectionVariables.get('flowBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / NEW, minimal order response', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('NEW');",
+                  "  const previousId = pm.collectionVariables.get('orderId');",
+                  "  if (previousId) pm.expect(data.order.id).to.equal(Number(previousId));",
+                  "  // A valid replay can recover the created ID after a lost creation response.",
+                  "  pm.collectionVariables.set('orderId', String(data.order.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{flowKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "Uses the saved original body and UUID. A valid 200 NEW also recovers orderId if the creation response was lost; never restart the flow to recover an uncertain submission.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{flowBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05 Changed intent with original UUID",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));",
+                  "if (!pm.collectionVariables.get('flowKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowKey missing.'); }",
+                  "pm.variables.set('flowKey', pm.collectionVariables.get('flowKey'));",
+                  "if (!pm.collectionVariables.get('flowConflictBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowConflictBody missing.'); }",
+                  "pm.variables.set('flowConflictBody', pm.collectionVariables.get('flowConflictBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 generic error', () => { pm.response.to.have.status(409); pm.expect(pm.response.json()).to.deep.equal({message: \"The idempotency key was already used with a different request.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{flowKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{flowConflictBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06 Portfolio — replay and conflict add no reservation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Exactly 30.00 reserved; no executed holdings or total change', () => {",
+                  "  const before = JSON.parse(pm.collectionVariables.get('baseline'));",
+                  "  const after = pm.response.json();",
+                  "  pm.expect(BigInt(before.availableCash.replace('.', '')) - BigInt(after.availableCash.replace('.', ''))).to.equal(3000n);",
+                  "  pm.expect(after.totalValue).to.equal(before.totalValue);",
+                  "  pm.expect(after.positions).to.deep.equal(before.positions);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "07 Cancel only the created order",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / CANCELLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('CANCELLED');",
+                  "  pm.expect(data.order.id).to.equal(Number(pm.collectionVariables.get('orderId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/orders/{{orderId}}/cancel",
+            "description": "No body and no Idempotency-Key. Uses only the ID captured by request 02."
+          },
+          "response": []
+        },
+        {
+          "name": "08 Portfolio — reserves released",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Full baseline restored after cancellation', () => {",
+                  "  pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get('baseline')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "09 Repeat cancellation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / CANCELLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('CANCELLED');",
+                  "  pm.expect(data.order.id).to.equal(Number(pm.collectionVariables.get('orderId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/orders/{{orderId}}/cancel",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "10 Portfolio — repeat cancellation has no extra effects",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Repeated cancellation preserves full baseline', () => {",
+                  "  pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get('baseline')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "11 Replay original creation after cancellation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('orderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: orderId missing.'); }",
+                  "pm.variables.set('orderId', pm.collectionVariables.get('orderId'));",
+                  "if (!pm.collectionVariables.get('flowKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowKey missing.'); }",
+                  "pm.variables.set('flowKey', pm.collectionVariables.get('flowKey'));",
+                  "if (!pm.collectionVariables.get('flowBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowBody missing.'); }",
+                  "pm.variables.set('flowBody', pm.collectionVariables.get('flowBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / CANCELLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('CANCELLED');",
+                  "  pm.expect(data.order.id).to.equal(Number(pm.collectionVariables.get('orderId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{flowKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{flowBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 Additional order examples",
+      "item": [
+        {
+          "name": "12 BUY MARKET by size",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('marketBuyKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: marketBuyKey missing.'); }",
+                  "pm.variables.set('marketBuyKey', pm.collectionVariables.get('marketBuyKey'));",
+                  "if (!pm.collectionVariables.get('marketBuyBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: marketBuyBody missing.'); }",
+                  "pm.variables.set('marketBuyBody', pm.collectionVariables.get('marketBuyBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / FILLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('FILLED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{marketBuyKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "Executes one share immediately at the seeded latest close (925.85); cannot be cancelled.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{marketBuyBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13 Portfolio — MARKET purchase effects",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('One share added and 925.85 debited', () => {",
+                  "  const before = JSON.parse(pm.collectionVariables.get('baseline')), after = pm.response.json();",
+                  "  const id = Number(pm.environment.get('instrumentId'));",
+                  "  pm.expect(after.positions.find(x=>x.instrumentId===id).quantity).to.equal(before.positions.find(x=>x.instrumentId===id).quantity+1);",
+                  "  pm.expect(BigInt(before.availableCash.replace('.',''))-BigInt(after.availableCash.replace('.',''))).to.equal(92585n);",
+                  "  pm.expect(after.totalValue).to.equal(before.totalValue);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "14 SELL MARKET by amount",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('marketSellKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: marketSellKey missing.'); }",
+                  "pm.variables.set('marketSellKey', pm.collectionVariables.get('marketSellKey'));",
+                  "if (!pm.collectionVariables.get('marketSellBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: marketSellBody missing.'); }",
+                  "pm.variables.set('marketSellBody', pm.collectionVariables.get('marketSellBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / FILLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('FILLED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{marketSellKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "1000.00 / 925.85 floors to one share; offsets request 12 cash and quantity. Cost basis and total return may change.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{marketSellBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "15 Portfolio — MARKET cash and quantity restored",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('Cash, quantities and valuation restored after opposite MARKET trades', () => {",
+                  "  const before = JSON.parse(pm.collectionVariables.get('baseline')), after = pm.response.json();",
+                  "  pm.expect(after.availableCash).to.equal(before.availableCash);",
+                  "  pm.expect(after.totalValue).to.equal(before.totalValue);",
+                  "  pm.expect(after.positions.map(x=>[x.instrumentId,x.quantity,x.positionValue])).to.deep.equal(before.positions.map(x=>[x.instrumentId,x.quantity,x.positionValue]));",
+                  "  // Executed trades can change cost basis; subsequent checks use this new snapshot.",
+                  "  pm.collectionVariables.set('baseline', JSON.stringify(after));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "16 SELL LIMIT by amount",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('sellLimitKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: sellLimitKey missing.'); }",
+                  "pm.variables.set('sellLimitKey', pm.collectionVariables.get('sellLimitKey'));",
+                  "if (!pm.collectionVariables.get('sellLimitBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: sellLimitBody missing.'); }",
+                  "pm.variables.set('sellLimitBody', pm.collectionVariables.get('sellLimitBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / NEW, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('NEW');",
+                  "  pm.collectionVariables.set('sellLimitOrderId', String(data.order.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{sellLimitKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "1000.00 / 300.00 floors to three shares reserved; does not execute or reserve cash.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{sellLimitBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "17 Portfolio — SELL LIMIT leaves cash and executed positions unchanged",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('sellLimitOrderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: sellLimitOrderId missing.'); }",
+                  "pm.variables.set('sellLimitOrderId', pm.collectionVariables.get('sellLimitOrderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('SELL reservation does not execute or reserve cash', () => {",
+                  "  pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get('baseline')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "18 Cancel only the SELL LIMIT created above",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('sellLimitOrderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: sellLimitOrderId missing.'); }",
+                  "pm.variables.set('sellLimitOrderId', pm.collectionVariables.get('sellLimitOrderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / CANCELLED, minimal order response', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('CANCELLED');",
+                  "  pm.expect(data.order.id).to.equal(Number(pm.collectionVariables.get('sellLimitOrderId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/orders/{{sellLimitOrderId}}/cancel",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "19 Insufficient cash — BUY LIMIT is persisted REJECTED",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('rejectBuyKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: rejectBuyKey missing.'); }",
+                  "pm.variables.set('rejectBuyKey', pm.collectionVariables.get('rejectBuyKey'));",
+                  "if (!pm.collectionVariables.get('rejectBuyBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: rejectBuyBody missing.'); }",
+                  "pm.variables.set('rejectBuyBody', pm.collectionVariables.get('rejectBuyBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / REJECTED, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('REJECTED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rejectBuyKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{rejectBuyBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "20 Insufficient shares — SELL MARKET is persisted REJECTED",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('rejectSellKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: rejectSellKey missing.'); }",
+                  "pm.variables.set('rejectSellKey', pm.collectionVariables.get('rejectSellKey'));",
+                  "if (!pm.collectionVariables.get('rejectSellBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: rejectSellBody missing.'); }",
+                  "pm.variables.set('rejectSellBody', pm.collectionVariables.get('rejectSellBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / REJECTED, minimal order response', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.all.keys('order');",
+                  "  pm.expect(data.order).to.have.all.keys('id','status');",
+                  "  pm.expect(Number.isInteger(data.order.id) && data.order.id > 0).to.equal(true);",
+                  "  pm.expect(data.order.status).to.equal('REJECTED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rejectSellKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{rejectSellBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "21 Portfolio — cancellations and rejections add no effects",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('baseline')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: baseline missing.'); }",
+                  "pm.variables.set('baseline', pm.collectionVariables.get('baseline'));",
+                  "if (!pm.collectionVariables.get('sellLimitOrderId')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: sellLimitOrderId missing.'); }",
+                  "pm.variables.set('sellLimitOrderId', pm.collectionVariables.get('sellLimitOrderId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 portfolio shape and decimal strings', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const p = pm.response.json();",
+                  "  pm.expect(p).to.have.all.keys('totalValue', 'availableCash', 'positions');",
+                  "  for (const field of ['totalValue', 'availableCash']) pm.expect(p[field]).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "  pm.expect(p.positions).to.be.an('array');",
+                  "  p.positions.forEach(x => {",
+                  "    pm.expect(x).to.have.all.keys('instrumentId','ticker','name','quantity','positionValue','totalReturnPercent','dailyReturnPercent');",
+                  "    pm.expect(Number.isInteger(x.instrumentId) && x.instrumentId > 0).to.equal(true);",
+                  "    pm.expect(Number.isInteger(x.quantity)).to.equal(true);",
+                  "    for (const field of ['ticker','name']) pm.expect(x[field] === null || typeof x[field] === 'string').to.equal(true);",
+                  "    pm.expect(x.positionValue).to.match(/^-?[0-9]+\\.[0-9]{2}$/);",
+                  "    for (const field of ['totalReturnPercent','dailyReturnPercent']) pm.expect(x[field] === null || (typeof x[field] === 'number' && Number.isFinite(x[field]))).to.equal(true);",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('No execution or cash reservation from rejected orders', () => {",
+                  "  pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get('baseline')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}/portfolio",
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 Representative errors",
+      "item": [
+        {
+          "name": "22 Invalid search — missing query",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 generic error', () => { pm.response.to.have.status(400); pm.expect(pm.response.json()).to.deep.equal({message: \"Invalid request.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/instruments",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "23 Invalid order — size must be an integer number",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('invalidKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: invalidKey missing.'); }",
+                  "pm.variables.set('invalidKey', pm.collectionVariables.get('invalidKey'));",
+                  "if (!pm.collectionVariables.get('invalidBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: invalidBody missing.'); }",
+                  "pm.variables.set('invalidBody', pm.collectionVariables.get('invalidBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 generic error', () => { pm.response.to.have.status(400); pm.expect(pm.response.json()).to.deep.equal({message: \"Invalid request.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{invalidKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{invalidBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "24 Invalid order — missing Idempotency-Key",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('flowBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: flowBody missing.'); }",
+                  "pm.variables.set('flowBody', pm.collectionVariables.get('flowBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 generic error', () => { pm.response.to.have.status(400); pm.expect(pm.response.json()).to.deep.equal({message: \"Invalid request.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{flowBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "25 Missing user portfolio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 generic error', () => { pm.response.to.have.status(404); pm.expect(pm.response.json()).to.deep.equal({message: \"User not found.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/2147483647/portfolio",
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "26 Missing instrument submission",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('missingKey')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: missingKey missing.'); }",
+                  "pm.variables.set('missingKey', pm.collectionVariables.get('missingKey'));",
+                  "if (!pm.collectionVariables.get('missingBody')) { pm.execution.skipRequest(); throw new Error('Run Start flow and its prerequisites first: missingBody missing.'); }",
+                  "pm.variables.set('missingBody', pm.collectionVariables.get('missingBody'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 generic error', () => { pm.response.to.have.status(404); pm.expect(pm.response.json()).to.deep.equal({message: \"User or instrument not found.\"}); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{missingKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/{{userId}}/orders",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{{missingBody}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
