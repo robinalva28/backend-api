@@ -1,3 +1,8 @@
+import { diagnosticCode } from '../../shared/diagnostics.js';
+import {
+  noopOperationalLogger,
+  type OperationalLogger,
+} from '../../shared/logging/operational-logger.js';
 import { AccountTransactionError } from '../../transactions/application/errors/account-transaction.error.js';
 import type {
   AccountTransactionContext,
@@ -27,6 +32,7 @@ export class RetryingSubmitOrderRunner implements AccountTransactionRunner {
   constructor(
     private readonly runner: AccountTransactionRunner,
     private readonly delay: SubmitOrderRetryDelay = wait,
+    private readonly logger: OperationalLogger = noopOperationalLogger,
   ) {}
 
   async run<T>(
@@ -43,6 +49,16 @@ export class RetryingSubmitOrderRunner implements AccountTransactionRunner {
           throw error;
         }
 
+        this.logger.warn('orders.retry.scheduled', {
+          accountUserId: userId,
+          attempt: attempt + 2,
+          delayMs: delay,
+          stage: error.stage,
+          commitOutcome: error.commitOutcome,
+          ...(diagnosticCode(error) === undefined
+            ? {}
+            : { code: diagnosticCode(error) }),
+        });
         await this.delay(delay);
       }
     }

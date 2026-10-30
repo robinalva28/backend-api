@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Logger,
   type ArgumentsHost,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -11,6 +10,7 @@ import { PreparedOrderPersistenceError } from '../../src/orders/application/erro
 import { OrderIntentError } from '../../src/orders/domain/order-intent.error.js';
 import { PreparedOrderError } from '../../src/orders/domain/prepared-order.error.js';
 import { SubmitOrderExceptionFilter } from '../../src/orders/infrastructure/http/submit-order-exception.filter.js';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 import {
   INVALID_SUBMIT_ORDER_REQUEST_MESSAGE,
   SUBMIT_ORDER_CONFLICT_MESSAGE,
@@ -43,7 +43,9 @@ function createHost(): ResponseSpies {
 let log: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  log = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  log = vi
+    .spyOn(JsonOperationalLogger.prototype, 'error')
+    .mockImplementation(() => undefined);
 });
 
 describe('SubmitOrderExceptionFilter', () => {
@@ -98,7 +100,7 @@ describe('SubmitOrderExceptionFilter', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it.each(['quote-unavailable', 'quote-invalid', 'completion-failed'] as const)(
+  it.each(['quote-unavailable', 'quote-invalid'] as const)(
     'maps %s to the sanitized 500',
     (code) => {
       const { host, status, json } = createHost();
@@ -115,6 +117,21 @@ describe('SubmitOrderExceptionFilter', () => {
       expect(log).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('does not duplicate the recovery failure already logged by the use case', () => {
+    const { host, status, json } = createHost();
+
+    new SubmitOrderExceptionFilter().catch(
+      new SubmitOrderError('completion-failed'),
+      host,
+    );
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      message: SUBMIT_ORDER_UNAVAILABLE_MESSAGE,
+    });
+    expect(log).not.toHaveBeenCalled();
+  });
 
   it('maps BadRequestException to the exact generic 400 without logging', () => {
     const { host, status, json } = createHost();
@@ -165,7 +182,7 @@ describe('SubmitOrderExceptionFilter', () => {
       message: SUBMIT_ORDER_UNAVAILABLE_MESSAGE,
     });
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=order-submission');
     expect(logged).toContain('AccountTransactionError');
     expect(logged).not.toContain('sensitive driver detail');
@@ -191,7 +208,7 @@ describe('SubmitOrderExceptionFilter', () => {
     });
     expect(log).toHaveBeenCalledTimes(1);
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=order-submission');
     expect(logged).not.toContain('sensitive');
     expect(logged).not.toContain('\n');

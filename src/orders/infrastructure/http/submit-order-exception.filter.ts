@@ -1,12 +1,12 @@
 import {
   BadRequestException,
   Catch,
-  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { sanitizeDiagnostic } from '../../../shared/diagnostics.js';
+import { failureLogFields } from '../../../shared/logging/failure-fields.js';
+import { getOperationalLogger } from '../../../shared/logging/operational-logger.js';
 import { SubmitOrderError } from '../../application/errors/submit-order.error.js';
 import {
   INVALID_SUBMIT_ORDER_REQUEST_MESSAGE,
@@ -17,8 +17,6 @@ import {
 
 @Catch()
 export class SubmitOrderExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(SubmitOrderExceptionFilter.name);
-
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
@@ -40,9 +38,12 @@ export class SubmitOrderExceptionFilter implements ExceptionFilter {
             .status(409)
             .json({ message: SUBMIT_ORDER_CONFLICT_MESSAGE });
           return;
+        case 'completion-failed':
+          // The recovery layer already emitted the definitive failure event.
+          sendUnavailable(response);
+          return;
         case 'quote-unavailable':
         case 'quote-invalid':
-        case 'completion-failed':
           this.fail(exception, response);
           return;
       }
@@ -59,11 +60,9 @@ export class SubmitOrderExceptionFilter implements ExceptionFilter {
   }
 
   private fail(exception: unknown, response: Response): void {
-    this.logger.error(
-      `Order submission failed: ${sanitizeDiagnostic(
-        exception,
-        'order-submission',
-      )}`,
+    getOperationalLogger().error(
+      'orders.submission.failed',
+      failureLogFields(exception, 'order-submission'),
     );
     sendUnavailable(response);
   }

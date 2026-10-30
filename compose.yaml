@@ -1,5 +1,11 @@
 name: backend-api
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   app:
     build:
@@ -14,6 +20,8 @@ services:
       PGDATABASE: ${PGDATABASE:-backend_api}
       PGUSER: ${PGUSER:-backend_api}
       PGPASSWORD: ${PGPASSWORD:-backend-api-local}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SLOW_REQUEST_THRESHOLD_MS: ${SLOW_REQUEST_THRESHOLD_MS:-1000}
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     depends_on:
@@ -29,6 +37,7 @@ services:
       timeout: 3s
       start_period: 10s
       retries: 3
+    logging: *default-logging
 
   db:
     image: postgres:18.6-bookworm
@@ -52,6 +61,7 @@ services:
       timeout: 3s
       start_period: 10s
       retries: 10
+    logging: *default-logging
 
   db-test:
     image: postgres:18.6-bookworm
@@ -77,6 +87,7 @@ services:
       timeout: 3s
       start_period: 10s
       retries: 10
+    logging: *default-logging
 
 volumes:
   postgres-data:

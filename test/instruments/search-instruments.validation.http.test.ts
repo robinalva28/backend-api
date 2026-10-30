@@ -1,5 +1,4 @@
 import type { INestApplication } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import {
@@ -11,6 +10,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 import { SearchInstrumentsService } from '../../src/instruments/application/search-instruments.service.js';
 import type { InstrumentSearchRepository } from '../../src/instruments/application/ports/out/instrument-search.repository.js';
 import { InstrumentsController } from '../../src/instruments/infrastructure/http/instruments.controller.js';
@@ -126,7 +126,7 @@ describe('GET /instruments validation', () => {
 
   it('returns a generic 500 instead of an empty successful result on failure', async () => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     searchByText.mockRejectedValueOnce(
       new Error('sensitive SQL detail from the driver'),
@@ -141,7 +141,7 @@ describe('GET /instruments validation', () => {
     expect(searchByText).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalled();
 
-    const logged = log.mock.calls.map((call) => String(call[0])).join(' ');
+    const logged = log.mock.calls.map((call) => JSON.stringify(call[1])).join(' ');
     expect(logged).toContain('operation=instrument-search');
     expect(logged).not.toContain('sensitive SQL detail');
     expect(logged).not.toContain('\n');

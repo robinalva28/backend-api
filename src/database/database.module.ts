@@ -1,13 +1,13 @@
 import {
   Inject,
   Injectable,
-  Logger,
   Module,
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
-import { sanitizeDiagnostic } from '../shared/diagnostics.js';
+import { failureLogFields } from '../shared/logging/failure-fields.js';
+import { getOperationalLogger } from '../shared/logging/operational-logger.js';
 import { PG_POOL } from './database.tokens.js';
 import { readPostgresConfig } from './postgres.config.js';
 
@@ -37,11 +37,9 @@ class PostgresPoolLifecycle implements OnApplicationShutdown {
         );
 
         pool.on('error', (error: Error) => {
-          new Logger('PostgresPool').error(
-            `PostgreSQL idle client error: ${sanitizeDiagnostic(
-              error,
-              'postgres-idle-client',
-            )}`,
+          getOperationalLogger().error(
+            'postgres.idle_client_error',
+            failureLogFields(error, 'postgres-idle-client'),
           );
         });
 

@@ -1,12 +1,12 @@
 import {
   BadRequestException,
   Catch,
-  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { sanitizeDiagnostic } from '../../../shared/diagnostics.js';
+import { failureLogFields } from '../../../shared/logging/failure-fields.js';
+import { getOperationalLogger } from '../../../shared/logging/operational-logger.js';
 import { PortfolioError } from '../../application/errors/portfolio.error.js';
 import {
   INVALID_PORTFOLIO_REQUEST_MESSAGE,
@@ -16,8 +16,6 @@ import {
 
 @Catch()
 export class PortfolioExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(PortfolioExceptionFilter.name);
-
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
@@ -47,11 +45,9 @@ export class PortfolioExceptionFilter implements ExceptionFilter {
   }
 
   private fail(exception: unknown, response: Response): void {
-    this.logger.error(
-      `Portfolio retrieval failed: ${sanitizeDiagnostic(
-        exception,
-        'portfolio-read',
-      )}`,
+    getOperationalLogger().error(
+      'portfolio.read.failed',
+      failureLogFields(exception, 'portfolio-read'),
     );
     response
       .status(500)

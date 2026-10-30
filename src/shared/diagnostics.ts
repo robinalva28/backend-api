@@ -60,6 +60,39 @@ interface ErrorMetadata {
   readonly code: string | undefined;
 }
 
+export function diagnosticCode(error: unknown): string | undefined {
+  const seen = new WeakSet<object>();
+  let current: unknown = error;
+
+  for (let depth = 0; depth < MAX_CAUSES; depth += 1) {
+    if (!(current instanceof Error)) {
+      return undefined;
+    }
+
+    if (seen.has(current)) {
+      return undefined;
+    }
+
+    seen.add(current);
+
+    const code = readErrorMetadata(current).code;
+
+    if (code !== undefined) {
+      return code;
+    }
+
+    const cause = readCause(current);
+
+    if (cause === undefined || cause === current) {
+      return undefined;
+    }
+
+    current = cause;
+  }
+
+  return undefined;
+}
+
 export function sanitizeDiagnostic(error: unknown, operation: string): string {
   const safeOperation =
     typeof operation === 'string' && SAFE_OPERATION.test(operation)

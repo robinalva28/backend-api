@@ -1,6 +1,11 @@
 import { Decimal } from 'decimal.js';
 import { calculateAccountResources } from '../../resources/domain/calculate-account-resources.js';
 import type { AccountResources } from '../../resources/domain/account-resources.js';
+import { failureLogFields } from '../../shared/logging/failure-fields.js';
+import {
+  noopOperationalLogger,
+  type OperationalLogger,
+} from '../../shared/logging/operational-logger.js';
 import { AccountTransactionError } from '../../transactions/application/errors/account-transaction.error.js';
 import type {
   AccountTransactionContext,
@@ -56,6 +61,7 @@ export class SubmitOrderService implements SubmitOrderUseCase {
     private readonly runner: AccountTransactionRunner,
     private readonly clock: Clock,
     private readonly recovery: SubmitOrderRecovery,
+    private readonly logger: OperationalLogger = noopOperationalLogger,
   ) {}
 
   async execute(input: SubmitOrderInput): Promise<SubmitOrderOutput> {
@@ -97,19 +103,30 @@ export class SubmitOrderService implements SubmitOrderUseCase {
         intent,
       });
     } catch (error) {
+      this.logger.error(
+        'orders.recovery.failed',
+        failureLogFields(error, 'order-recovery'),
+      );
       throw new SubmitOrderError('completion-failed', { cause: error });
     }
 
     switch (outcome.status) {
       case 'recovered':
+        this.logger.info('orders.recovery.recovered', {
+          orderId: outcome.order.id,
+          orderStatus: outcome.order.status,
+        });
+
         return {
           orderId: outcome.order.id,
           status: outcome.order.status,
           replayed: true,
         };
       case 'conflict':
+        this.logger.info('orders.recovery.conflict');
         throw new SubmitOrderError('conflict');
       case 'unrecoverable':
+        this.logger.error('orders.recovery.failed');
         throw new SubmitOrderError('completion-failed');
     }
   }
@@ -126,6 +143,11 @@ export class SubmitOrderService implements SubmitOrderUseCase {
     });
 
     if (replay.outcome === 'match') {
+      this.logger.info('orders.replay.recovered', {
+        orderId: replay.order.id,
+        orderStatus: replay.order.status,
+      });
+
       return { kind: 'replayed', order: replay.order };
     }
 

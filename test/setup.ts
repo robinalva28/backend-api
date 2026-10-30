@@ -7,3 +7,5 @@ if (existsSync('.env')) {
 }
 
 applyTestDatabaseEnvironment();
+
+process.env['LOG_LEVEL'] ??= 'error';

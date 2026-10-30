@@ -5,6 +5,10 @@ import type { SubmitOrderUseCase } from '../../src/orders/application/ports/in/s
 import type { OrderIntent } from '../../src/orders/domain/order-intent.js';
 import type { PersistedOrderStatus } from '../../src/orders/domain/persisted-order.js';
 import { SubmitOrderController } from '../../src/orders/infrastructure/http/submit-order.controller.js';
+import {
+  currentRequestLogContext,
+  runWithRequestLogContext,
+} from '../../src/shared/logging/request-context.js';
 
 const KEY = '123E4567-E89B-12D3-A456-426614174000';
 const NORMALIZED_KEY = KEY.toLowerCase();
@@ -68,6 +72,31 @@ describe('SubmitOrderController', () => {
       intent: INTENT,
     });
     expect(execute.mock.calls[0]?.[0]).not.toHaveProperty('currency');
+  });
+
+  it('annotates the created order id in the active request context', async () => {
+    const { controller, execute, response, request } = createFixture();
+    execute.mockResolvedValueOnce({
+      orderId: 81,
+      status: 'NEW',
+      replayed: false,
+    });
+
+    let captured: ReturnType<typeof currentRequestLogContext>;
+
+    await runWithRequestLogContext(
+      { requestId: 'request-123', accountUserId: 1 },
+      async () => {
+        await controller.submit('1', request, INTENT, response);
+        captured = currentRequestLogContext();
+      },
+    );
+
+    expect(captured).toMatchObject({
+      requestId: 'request-123',
+      accountUserId: 1,
+      orderId: 81,
+    });
   });
 
   it.each<PersistedOrderStatus>(['NEW', 'FILLED', 'REJECTED', 'CANCELLED'])(

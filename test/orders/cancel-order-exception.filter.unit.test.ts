@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Logger,
   type ArgumentsHost,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -8,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CancelOrderError } from '../../src/orders/application/errors/cancel-order.error.js';
 import { OrderCancellationMappingError } from '../../src/orders/application/errors/order-cancellation-mapping.error.js';
 import { CancelOrderExceptionFilter } from '../../src/orders/infrastructure/http/cancel-order-exception.filter.js';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 import {
   CANCEL_ORDER_UNAVAILABLE_MESSAGE,
   INVALID_CANCEL_REQUEST_MESSAGE,
@@ -40,7 +40,9 @@ function createHost(): ResponseSpies {
 let log: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  log = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  log = vi
+    .spyOn(JsonOperationalLogger.prototype, 'error')
+    .mockImplementation(() => undefined);
 });
 
 describe('CancelOrderExceptionFilter', () => {
@@ -117,7 +119,7 @@ describe('CancelOrderExceptionFilter', () => {
       message: CANCEL_ORDER_UNAVAILABLE_MESSAGE,
     });
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=order-cancellation');
     expect(logged).toContain('AccountTransactionError');
     expect(logged).not.toContain('sensitive driver detail');
@@ -139,7 +141,7 @@ describe('CancelOrderExceptionFilter', () => {
     });
     expect(log).toHaveBeenCalledTimes(1);
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=order-cancellation');
     expect(logged).not.toContain('sensitive');
   });

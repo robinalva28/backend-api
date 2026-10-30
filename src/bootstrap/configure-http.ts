@@ -7,11 +7,20 @@ import { isSubmitOrderRequest } from '../orders/infrastructure/http/submit-order
 import { rejectMalformedPortfolioUrl } from '../portfolio/infrastructure/http/reject-malformed-portfolio-url.middleware.js';
 import { INVALID_PORTFOLIO_REQUEST_MESSAGE } from '../portfolio/infrastructure/http/http-messages.js';
 import { isPortfolioRequest } from '../portfolio/infrastructure/http/portfolio-request-path.js';
+import { createRequestLoggingMiddleware } from '../shared/http/request-logging.middleware.js';
+import type { RequestLoggingOptions } from '../shared/http/request-logging.middleware.js';
 import { HttpParserExceptionFilter } from '../shared/http/parser-exception.filter.js';
 
-export function configureHttpApplication(app: INestApplication): void {
+export type HttpApplicationOptions = RequestLoggingOptions;
+
+export function configureHttpApplication(
+  app: INestApplication,
+  options: HttpApplicationOptions = {},
+): void {
   // Must run before init/listen: Nest registers its body parsers during init,
   // so these middlewares are then placed before them and before the router.
+  // Request logging is first so parser and pre-router rejections are included.
+  app.use(createRequestLoggingMiddleware(options));
   app.use(rejectMalformedCancelOrderUrl);
   app.use(rejectCancelOrderBody);
   app.use(rejectMalformedPortfolioUrl);
