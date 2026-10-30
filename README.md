@@ -95,6 +95,25 @@ Order inputs use `BUY`/`SELL`, `MARKET`/`LIMIT`, and exactly one of integer `siz
 
 Insufficient resources persist `REJECTED` with 201, rather than an HTTP error. Cancellation accepts no body, returns 200 when repeated, and rejects FILLED/REJECTED orders with 409. Errors use `{"message":"..."}`: 400 for invalid input, 404 for missing resources, 409 for conflicts, and 500 for technical failures.
 
+## Postman collection
+
+Import [the Collection v2.1 file](postman/Backend-API.postman_collection.json) and [Local environment](postman/Local.postman_environment.json) into Postman. Select **Local** and set `baseUrl` to your disposable local API (example: `http://127.0.0.1:3000`); keep seeded `userId=1` and `instrumentId=47` (PAMP).
+
+Use a fresh, disposable local PostgreSQL database loaded from [the seed](database.sql) with [the existing migration](db/migrations/20261028-b04b-order-idempotency.sql) applied. Verify the application's effective connection settings: no `DATABASE_URL`, and `PGHOST`/`PGPORT`/`PGDATABASE` must identify that disposable database. A loopback API URL does not prove the database is local. Do not run against development or a remote database, and do not load the real `.env` to prepare this run. The examples require the seeded close of `925.85`, sufficient cash, and at least three PAMP shares.
+
+In Collection Runner, select all four folders in their saved order, **one iteration**, and run. The 28 requests assert search results, portfolio structure, order status and identity, exact reservation/release effects, MARKET cash/quantity changes, and representative 400/404/409 responses. Alternatively, with Newman available, run from the repository root:
+
+```sh
+newman run postman/Backend-API.postman_collection.json \
+  --environment postman/Local.postman_environment.json --bail
+```
+
+Newman 6.2.1 was used for validation, installed outside the project; no project dependency is required. Override `baseUrl` in the environment when using a different disposable API port.
+
+`01 Start flow` clears previous operation state and generates one UUID and saved body per new operation in collection variables. Later requests retain them. After an uncertain creation response, use `04 Replay exact UUID and original body`; it can recover the ID without a saved creation response. Do not restart the flow to recover an uncertain write. Cancellation requests have no body or idempotency header and only use IDs captured from valid creation/replay responses; missing prerequisites skip the request. Keep the environment unchanged throughout the flow. Re-importing the files loses runtime correlation state.
+
+The BUY LIMIT reserves `30.00`, replay returns the same ID, changed intent returns 409, and cancellation restores the portfolio; repeated cancellation adds no effects. Additional examples execute BUY MARKET by size and SELL MARKET by amount, then create/cancel SELL LIMIT by amount. Insufficient cash/shares create `201 / REJECTED` orders. Every full run persists six order rows: two CANCELLED, two FILLED and two REJECTED. Opposite MARKET trades restore cash and quantity but can change cost basis and returns. Remove only your disposable stack after inspection; the collection does not delete data. [OpenAPI](src/documentation/openapi.document.ts) remains the contract source.
+
 ## Configuration
 
 Defaults work without a `.env` file; see step 2 to create one.
@@ -244,4 +263,3 @@ Local validation and the runtime-image walkthrough are recorded in the [delivery
 - Assess monetary rounding and higher precision. [Details](docs/backend-features.spec#evidencia-sobre-la-precisión-histórica-y-costo-de-preservarla).
 - Assess coordinated connection, lock, query, and operation time limits. [Details](docs/backend-features.spec#cierre-de-q04-para-el-challenge).
 - Assess connection recovery and additional retries with preserved idempotency. [Details](docs/backend-features.spec#cierre-de-q04-para-el-challenge).
-- Prepare an optional Postman collection after implementation. [Details](docs/backend-features.spec#o01--colección-de-solicitudes-nice-to-have-al-final).

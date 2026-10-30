@@ -33,7 +33,7 @@ La revisión de entrega del 2026-10-30 no identificó funcionalidad obligatoria 
 
 ## Opcionales, libertades y límites
 
-- **O01:** colección Postman, Insomnia o REST Client, único nice to have explícito. Pendiente; README ya incluye ejemplos. No bloquea la entrega obligatoria.
+- **O01:** colección Postman, Insomnia o REST Client, único nice to have explícito. Implementada y validada localmente con Newman el 2026-10-30; colección y entorno en [README](../README.md#postman-collection). Evidencia y límites en [O01](backend-features.spec#o01--colección-de-solicitudes-nice-to-have-al-final). No bloquea la entrega obligatoria.
 - La consigna permite modificar tablas con justificación; no obliga a hacerlo. La migración requiere autorización operativa y credenciales del destino, además de la justificación de diseño.
 - No se requiere autenticación ni simulación de mercado. Rutas, códigos HTTP, Docker, CI, Swagger e idempotencia son decisiones del proyecto.
 - Política vigente del envío: máximo dos intentos y una espera de 50 ms para fallos transitorios elegibles; una consulta de recuperación tras COMMIT incierto, sin recrear la orden.
