@@ -3,6 +3,7 @@ import type { ConnectionOptions } from 'node:tls';
 import type { PoolConfig } from 'pg';
 
 export interface PostgresEnvironment {
+  NODE_ENV?: string | undefined;
   DATABASE_URL?: string | undefined;
   PGSSLROOTCERT?: string | undefined;
   PGHOST?: string | undefined;
@@ -17,7 +18,7 @@ export type PostgresConnectionMode = 'local' | 'remote';
 const DEFAULT_POSTGRES = {
   host: '127.0.0.1',
   port: 5432,
-  database: 'backend_api',
+  database: 'backend_api_test',
   user: 'backend_api',
   password: 'backend-api-local',
 } as const;
@@ -27,11 +28,19 @@ const REMOTE_SSL_MODES = new Set(['require', 'verify-ca', 'verify-full']);
 export function postgresConnectionMode(
   environment: PostgresEnvironment,
 ): PostgresConnectionMode {
-  return environment.DATABASE_URL === undefined ? 'local' : 'remote';
+  if (environment.DATABASE_URL !== undefined) {
+    return 'remote';
+  }
+
+  if (environment.NODE_ENV !== 'test') {
+    throw new Error('DATABASE_URL is required outside NODE_ENV=test.');
+  }
+
+  return 'local';
 }
 
 export function readPostgresConfig(environment: PostgresEnvironment): PoolConfig {
-  if (environment.DATABASE_URL !== undefined) {
+  if (postgresConnectionMode(environment) === 'remote') {
     return readRemotePostgresConfig(environment);
   }
 

@@ -28,6 +28,7 @@ class PostgresPoolLifecycle implements OnApplicationShutdown {
       useFactory: (config: ConfigService): Pool => {
         const pool = new Pool(
           readPostgresConfig({
+            NODE_ENV: config.get<string>('NODE_ENV'),
             DATABASE_URL: config.get<string>('DATABASE_URL'),
             PGSSLROOTCERT: config.get<string>('PGSSLROOTCERT'),
             PGHOST: config.get<string>('PGHOST'),
