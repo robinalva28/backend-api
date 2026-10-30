@@ -125,6 +125,16 @@ npm test
 
 Alternatively, run `npm run test:integration` or `npm run test:http` individually. Tests use the ephemeral `backend_api_test` database, reject other database names, and manage their fixtures and migration schemas. They do not require the development API to be running. Override host, port, or credentials with `TEST_PGHOST`, `PGTESTPORT`, `TEST_PGUSER`, and `TEST_PGPASSWORD`.
 
+### Static CI
+
+[GitHub Actions](.github/workflows/ci.yml) runs on every branch push and on pull requests opened, reopened, or updated against `main`. It uses Node.js 24.22.1, installs dependencies with `npm ci --ignore-scripts`, checks application and test types, builds the application, and runs isolated unit tests with V8 coverage. To run the same checks locally after installing dependencies:
+
+```sh
+npm run ci
+```
+
+`npm run test:coverage` runs only unit tests and writes HTML and JSON summary reports to `coverage/`. Coverage includes all `src/**/*.ts` files, including files not exercised by unit tests. The workflow keeps the report as the `unit-coverage` artifact for seven days. Coverage is informational, without a minimum threshold. PostgreSQL, HTTP integration tests, Docker builds, lint, and formatting are outside this workflow. Push and pull-request events can produce separate runs for the same commit; newer runs cancel older runs for the same Git ref.
+
 ## Design and limits
 
 Features follow a hexagonal architecture: domain and use cases are independent of HTTP and PostgreSQL adapters. Decimal arithmetic preserves monetary precision. MARKET orders execute at the latest close; LIMIT orders reserve resources until cancellation. No market matching or transfer endpoint is implemented.

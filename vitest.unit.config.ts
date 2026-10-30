@@ -9,5 +9,11 @@ export default defineConfig({
     restoreMocks: true,
     testTimeout: 20_000,
     hookTimeout: 30_000,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text', 'json-summary', 'html'],
+      reportsDirectory: 'coverage',
+    },
   },
 });
