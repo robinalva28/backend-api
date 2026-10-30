@@ -1,6 +1,6 @@
 # Especificación funcional y técnica — Backend
 
-Estado: especificación parcial para revisión, actualizada el 2026-10-29. Formato documental Markdown con extensión `.spec`; no es código, una prueba ejecutable ni un formato asociado a una herramienta SDD específica.
+Estado: especificación parcial para revisión, actualizada el 2026-10-30. Formato documental Markdown con extensión `.spec`; no es código, una prueba ejecutable ni un formato asociado a una herramienta SDD específica.
 
 ## Alcance y autoridad
 
@@ -504,7 +504,7 @@ La revisión independiente del 2026-10-29 ejecutó tipos, build, 832 unitarias y
 
 **Validación:** con Node 24.22.1 pasaron tipos de aplicación, tipos de pruebas, build, 10 unitarias de documentación y 21 HTTP de documentación/validación de búsqueda (6 de documentación y 15 de búsqueda, incluida la regresión nueva), sin PostgreSQL. Se conserva como histórica la evidencia B09 de 832 unitarias y 204 HTTP; no se repitieron suites ajenas sin cambios. La imagen `runtime` se ejecutó sin PostgreSQL: `/openapi.json` respondió 200 con `title: "backend API"`, `InstrumentQuery` sin longitudes crudas y el patrón corregido; `/docs` redirigió a `/docs/`; `/docs/` sirvió `<title>backend API</title>`; `swagger-ui-init.js` incluyó `"validatorUrl": null`; CSS y bundle respondieron 200.
 
-**Estado:** B09-R1 implementado y validado localmente; aceptación independiente pendiente. Sin commit, push, PR ni merge.
+**Estado actualizado (2026-10-30):** B09/B09-R1 versionados en `1fa1645`. Correcciones aceptadas tras revisión independiente del patrón LIMIT, trim de búsqueda, títulos y desactivación del validador remoto; suites unitarias/HTTP y smoke de OpenAPI, redirección y assets en la imagen runtime aprobados. Sin revisión visual interactiva ni nueva publicación. La evidencia de entrega vigente se concentra en el [plan](plan.md#revisión-de-entrega-y-limpieza-documental-2026-10-30).
 
 ### Dependencias B09
 
@@ -526,6 +526,40 @@ La revisión independiente del 2026-10-29 ejecutó tipos, build, 832 unitarias y
 - OpenAPI no expresa por sí solo la unicidad de una cabecera repetida, el rechazo de JSON malformado, el rechazo de cualquier body con contenido en cancelación, la validación de escapes de URL, el `trim` previo al límite de query, el comportamiento de parámetros de query repetidos/estructurados ni la autoridad final de los patrones decimales. Esas reglas se describen en el documento y siguen implementadas por los validadores reales, que no se modificaron.
 - La UI usa el documento servido en `/openapi.json`; no se genera un segundo contrato ni clientes. La ruta `/docs` requiere el redirect a `/docs/` para que los assets relativos funcionen.
 - No se agregaron autenticación, timeouts, reconexiones, compatibilidad futura ni cambios de despliegue. La definición no documenta autenticación porque el API no la implementa.
+
+## F10 — Conexión, migración y logging operativo (2026-10-30)
+
+**Fuente:** pedido adicional del usuario del 2026-10-30. La consigna backend permite modificar tablas con justificación en su sección «Base de datos»; la conexión remota y el logging no sustituyen requisitos funcionales de portfolio, búsqueda, envío o cancelación.
+
+### Conexión local y remota
+
+- `DATABASE_URL` tiene prioridad absoluta sobre `PG*`. Si está ausente, se conserva la configuración local `PG*` y el modo local es el valor por defecto. Una URL vacía, inválida, con protocolo distinto de PostgreSQL, sin host o con un `sslmode` que desactive la verificación produce error de configuración y no usa las variables locales como respaldo.
+- El modo remoto exige TLS con verificación de certificado; `rejectUnauthorized` permanece en `true`. Se aceptan `sslmode=require`, `verify-ca` y `verify-full` (todos se ejecutan con verificación completa), y se rechazan `disable`, `allow`, `prefer` y `no-verify`. `PGSSLROOTCERT` permite indicar una CA privada.
+- La conexión remota fallida no activa el modo local. El arranque prueba la conexión seleccionada con `SELECT 1` antes de escuchar; un fallo termina el proceso con un evento `application.start_failed`. El pool remoto se usa únicamente a partir de `DATABASE_URL`; el servicio Compose `app-remote` no depende de `db`, mientras que el servicio local `app`, los comandos locales y el volumen existente se conservan.
+- Las pruebas funcionales usan exclusivamente `backend_api_test`. La inicialización elimina `DATABASE_URL`, `PGSSLROOTCERT` y `PGSSLMODE` antes de fijar `PG*`, incluso cuando se crea la aplicación Nest completa.
+
+### Migración de idempotencia
+
+- Se reutiliza `db/migrations/20261028-b04b-order-idempotency.sql`. No se agrega un framework ni se ejecuta DDL al arrancar. La aplicación remota de la migración requiere que el destino esté identificado de forma inequívoca y que existan credenciales externas seguras; no se ejecuta con datos de ejemplo, suites, órdenes de prueba ni borrados.
+- La migración debe aplicarse con una transacción única y `ON_ERROR_STOP=1` (`psql -1`). El archivo fija `lock_timeout = '5s'` antes de `LOCK TABLE orders IN ACCESS EXCLUSIVE MODE`; un bloqueo no adquirido aborta la transacción sin cambios parciales.
+- La primera ejecución agrega `idempotency_key UUID NULL` e `idempotency_metadata JSONB NULL`, sus dos CHECK y la UNIQUE `(userid, idempotency_key)`. La segunda verifica columnas y constraints y no cambia el esquema. Un estado incompleto o incompatible eleva una excepción y revierte todo el archivo. El rol efectivo necesita ser propietario de `orders` (o equivalente); `ALTER TABLE` no es un privilegio de tabla otorgable por separado.
+- La verificación posterior comprueba las dos columnas anulables, los tres constraints y la conservación de filas históricas. No se ejecuta una reversión destructiva automática si falla una comprobación posterior.
+
+### Logging operativo
+
+- La salida de consola es JSON por línea, sin dependencia nueva. `LOG_LEVEL` acepta `error`, `warn` o `info` y usa `info` por defecto. `SLOW_REQUEST_THRESHOLD_MS` usa `1000` ms por defecto y debe ser un entero positivo.
+- Cada solicitud recibe un `requestId` generado o un identificador entrante validado y acotado; se devuelve en `X-Request-Id` y se propaga mediante contexto asíncrono a errores y eventos transaccionales sin introducir Nest/HTTP en dominio o casos de uso. Se emite una finalización por solicitud; una conexión cerrada antes de finalizar produce un único evento WARN de aborto.
+- INFO: arranque, modo `local`/`remote` y finalización de solicitudes. WARN: reintento transitorio, solicitud lenta y COMMIT incierto. ERROR: fallo técnico definitivo, recuperación fallida y problemas de rollback o liberación. Un 400 común queda solo en el access log y no genera WARN.
+- Campos permitidos: `timestamp`, `level`, `event`, `requestId`, `method`, `route` (plantilla, nunca ruta cruda), `status`, `durationMs`, `accountUserId`, `orderId`, `orderStatus`, `connectionMode`, `port`, `thresholdMs`, `attempt`, `delayMs`, `stage`, `commitOutcome`, `code`, `diagnostic`, `rollbackFailed`, `releaseFailed`.
+- `accountUserId` es el identificador validado de la ruta, no identidad autenticada; se omite en rutas sin cuenta o entradas inválidas. `orderId` aparece cuando existe, incluida la orden creada en un envío exitoso. Los eventos de replay y recuperación no copian la clave de idempotencia.
+- Se conserva la sanitización existente: no se registran cuerpos, query strings, rutas crudas con identificadores, URLs de conexión, credenciales, correos, números de cuenta ni claves completas, ni se serializan objetos `Error` arbitrarios. El diagnóstico se emite una sola vez por capa relevante.
+- Compose usa el driver `json-file` con `max-size: 10m` y `max-file: 3` por contenedor. Es una retención local acotada (hasta unos 30 MB por contenedor); los logs se pierden al eliminar o recrear el contenedor. No se incorpora una plataforma externa.
+
+### Límites y verificación
+
+- Una clave nueva representa otra operación aunque los parámetros coincidan. La recuperación solo resuelve un COMMIT incierto mediante una consulta con la misma clave; no cubre fallos de conexión, timeouts, errores de negocio ni ausencia de fila, y no garantiza que toda solicitud se ejecute.
+- La conexión remota no se usa como respaldo del modo local ni a la inversa. Un fallo remoto no se transforma en éxito local.
+- La migración remota solo se declara aplicada si se ejecutó y verificó en un destino identificado. La validación local no acredita por sí sola el esquema, la versión ni los permisos del proveedor remoto.
 
 ## O01 — Colección de solicitudes (nice to have al final)
 

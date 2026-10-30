@@ -51,7 +51,7 @@ Default base URL: `http://127.0.0.1:3000`. No authentication is required; `userI
 | POST | `/users/:userId/orders` | Submit a MARKET or LIMIT order. |
 | POST | `/users/:userId/orders/:orderId/cancel` | Cancel an order in NEW state. |
 
-[Swagger UI](http://127.0.0.1:3000/docs/) and [OpenAPI JSON](http://127.0.0.1:3000/openapi.json) describe parameters, responses, and errors. Adjust their ports if configured differently. Schema alignment and Swagger corrections are [implemented but still pending independent acceptance](docs/backend-features.spec#b09-r1--correcciones-implementadas-2026-10-29).
+[Swagger UI](http://127.0.0.1:3000/docs/) and [OpenAPI JSON](http://127.0.0.1:3000/openapi.json) describe parameters, responses, and errors. Adjust their ports if configured differently. See the [documentation contract](docs/backend-features.spec#f09--documentación-openapi-y-swagger-ui-b09).
 
 ```sh
 curl -fsS "$BASE_URL/users/1/portfolio"
@@ -156,7 +156,7 @@ INFO records startup, the local or remote mode, and one completion per request. 
 
 Logs never include request or response bodies, query strings, raw paths with identifiers, connection URLs, credentials, emails, account numbers, or complete idempotency keys. Diagnostics keep the existing allow-listed error metadata sanitizer and never serialize arbitrary `Error` objects.
 
-Inspect logs with `docker compose logs -f app`. Docker Compose configures the `json-file` driver with `max-size: 10m` and `max-file: 3`, so each container retains at most roughly 30 MB in up to three rotated files. These logs live with the container and are deleted when it is removed, for example by `docker compose down`, `docker compose rm`, or recreating a container. Database reset (`down -v`) is not required to lose API logs. No external logging platform is configured.
+Inspect logs with `docker compose logs -f app` or `docker compose --profile remote logs -f app-remote`. Docker Compose configures the `json-file` driver with `max-size: 10m` and `max-file: 3`, so each container retains at most roughly 30 MB in up to three rotated files. These logs live with the container and are deleted when it is removed, for example by `docker compose down`, `docker compose rm`, or recreating a container. Database reset (`down -v`) is not required to lose API logs. No external logging platform is configured.
 
 ## Tests
 
@@ -215,7 +215,6 @@ The unchanged [seed](database.sql) loads only when the volume is empty. After re
 - Database connection fails after editing `.env`: the volume was initialized with different credentials; restore them. If you intentionally want to discard all local database data, follow [Optional database reset](#optional-database-reset).
 - Search returns `[]` on a reused volume: the seed only loads into an empty volume.
 - `npm start` fails: run `npm run build` first and use Node.js 24.22.1.
-
 - Startup logs `application.start_failed`: the database URL is invalid, the selected database is unreachable, or configuration validation failed. The process exits; fix the configuration instead of expecting a local fallback.
 
 ## Design and limits
@@ -223,6 +222,8 @@ The unchanged [seed](database.sql) loads only when the volume is empty. After re
 Features follow a hexagonal architecture: domain and use cases are independent of HTTP and PostgreSQL adapters. Decimal arithmetic preserves monetary precision. MARKET orders execute at the latest close; LIMIT orders reserve resources until cancellation. No market matching or transfer endpoint is implemented.
 
 Order writes use account locking, transactions, and persisted idempotency. Submission allows one eligible transient retry after 50 ms and one recovery lookup after an uncertain commit. Portfolio uses a consistent read snapshot. Historical negative holdings remain visible. No authentication, automatic connection retries, or application timeouts are implemented; response time is unbounded. Technical logs are JSON, sanitized, and correlated by `X-Request-Id`.
+
+Idempotency is an additional project decision justified under the assignment's database section, not a textual requirement. `Idempotency-Key` identifies one operation per account, so a new key means a new operation even with identical parameters; recovery only resolves an uncertain COMMIT by looking up the same key and does not make every possible failure recoverable.
 
 ## Documentation
 
@@ -233,6 +234,10 @@ Order writes use account locking, transactions, and persisted idempotency. Submi
 - [Contribution and agent workflow](AGENTS.md).
 
 Supporting documents retain their original language. Other challenge files are preserved; backend scope follows the linked assignment.
+
+## Delivery status
+
+Local validation and the runtime-image walkthrough are recorded in the [delivery review](docs/plan.md#revisión-de-entrega-y-limpieza-documental-2026-10-30). Remote TLS connectivity and read endpoints passed verification. The idempotency migration was applied remotely with explicit authorization: both columns and all three constraints were verified, the 11 existing orders were preserved, and a second execution made no changes. No remote test orders were created. The checked configuration uses `sslmode=verify-full&channel_binding=prefer`; the application rejects `channel_binding=require`. GitHub Actions still requires a real remote run.
 
 ## Follow-ups
 
