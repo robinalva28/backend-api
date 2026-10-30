@@ -12,9 +12,11 @@
     "start": "node dist/main.js",
     "test": "vitest run",
     "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:coverage": "vitest run --config vitest.unit.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:http": "vitest run --config vitest.http.config.ts",
-    "test:typecheck": "tsc --noEmit -p tsconfig.test.json"
+    "test:typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "ci": "npm run typecheck && npm run test:typecheck && npm run build && npm run test:coverage"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",
@@ -37,6 +39,7 @@
     "@types/pg": "8.23.1",
     "@types/supertest": "7.2.1",
     "@types/swagger-ui-express": "4.1.8",
+    "@vitest/coverage-v8": "5.0.5",
     "supertest": "7.3.1",
     "typescript": "7.0.2",
     "vite": "8.3.5",
