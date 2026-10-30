@@ -388,6 +388,34 @@ describe('B04-B order idempotency migration against PostgreSQL', () => {
     });
   });
 
+  it('bounds lock acquisition and rolls back without partial changes', async () => {
+    const holder = await pool.connect();
+    let started = 0;
+
+    try {
+      await holder.query('BEGIN');
+      await holder.query('LOCK TABLE orders IN ACCESS EXCLUSIVE MODE');
+      started = Date.now();
+
+      await expect(
+        withTransaction(async (client) => {
+          await applyMigration(client);
+        }),
+      ).rejects.toMatchObject({ code: '55P03' });
+
+      expect(Date.now() - started).toBeGreaterThanOrEqual(4_000);
+      expect(Date.now() - started).toBeLessThan(15_000);
+    } finally {
+      await holder.query('ROLLBACK');
+      holder.release();
+    }
+
+    await withTransaction(async (client) => {
+      expect(await readColumns(client)).toEqual([]);
+      expect(await readConstraints(client)).toEqual([]);
+    });
+  });
+
   it('fails safely on an incomplete schema missing a constraint', async () => {
     await expect(
       withTransaction(async (client) => {

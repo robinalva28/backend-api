@@ -20,12 +20,14 @@ Stack: NestJS with Express, strict TypeScript/ESM, Node.js 24.22.1, PostgreSQL 1
 
    If startup fails, inspect `docker compose logs -f app`.
 
-4. Apply the order migration. It is manual, checks schema compatibility when repeated, and is not run at startup:
+4. Apply the order migration. It is manual, runs in one transaction with `ON_ERROR_STOP`, bounds lock acquisition to five seconds, checks schema compatibility when repeated, and is not run at startup:
 
    ```sh
    docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -1 -f -' \
      < db/migrations/20261028-b04b-order-idempotency.sql
    ```
+
+   The migration requires ownership of `orders` (`ALTER TABLE` is not a separately grantable table privilege) and takes an `ACCESS EXCLUSIVE` lock. It adds the nullable idempotency columns and their constraints on the first run and verifies them without changing the schema on a second run. If the lock cannot be acquired within five seconds, or the existing schema is incomplete or incompatible, the transaction rolls back without partial changes. Verify the result with `\d orders` and `pg_get_constraintdef` for the three named constraints. The seed and historical rows are preserved; the application never applies DDL automatically.
 
 5. Verify the API:
 

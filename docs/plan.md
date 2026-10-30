@@ -1740,3 +1740,8 @@ El usuario autorizó cuatro commits locales delimitados: logging, conexión remo
 ## Versionado de la conexión remota (2026-10-30)
 
 Segundo bloque autorizado: DATABASE_URL prioritaria con TLS verificado, opciones de conexión validadas, channel binding opcional explícito, perfil app-remote separado y tests protegidos contra configuración remota. Incluye pruebas de configuración efectiva de pg, aislamiento y documentación de uso. El arranque reutiliza el logging del commit anterior e informa el modo elegido. Validación de exportación del índice con Node 24.22.1: npm run ci aprobado, 56 archivos/953 unitarias con cobertura (sentencias 92,95 %, ramas 93,27 %, funciones 93,37 %, líneas 93 %), 12/140 integración y 11/278 HTTP; ambas variantes Compose válidas con configuración sintética. Se reutilizan dependencias instaladas; no se afirma instalación limpia en este turno. La migración aún corresponde al bloque siguiente. Sin nuevas conexiones ni cambios remotos durante el versionado.
+
+
+## Versionado de la protección de migración (2026-10-30)
+
+Tercer bloque autorizado: lock_timeout local de cinco segundos en la migración existente, regresión PostgreSQL que fuerza bloqueo y verifica rollback sin columnas/restricciones parciales, y documentación operativa de requisitos y límites. Exportación exacta del índice con Node 24.22.1: tipos de pruebas y 12 archivos/141 pruebas de integración serial aprobados (7,89 s). Código de aplicación sin cambios respecto del bloque anterior. La ejecución remota previa ya está registrada; este commit no vuelve a ejecutarla. Sin publicación.
