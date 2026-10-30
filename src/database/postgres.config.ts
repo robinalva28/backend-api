@@ -11,9 +11,9 @@ export interface PostgresEnvironment {
 const DEFAULT_POSTGRES = {
   host: '127.0.0.1',
   port: 5432,
-  database: 'cocos',
-  user: 'cocos',
-  password: 'cocos-local',
+  database: 'backend_api',
+  user: 'backend_api',
+  password: 'backend-api-local',
 } as const;
 
 export function readPostgresConfig(environment: PostgresEnvironment): PoolConfig {

@@ -53,7 +53,7 @@ describe('InstrumentsExceptionFilter', () => {
     const filter = new InstrumentsExceptionFilter();
     const cause = Object.assign(
       new Error(
-        'postgres://alice:secret@db.internal/cocos password=hunter2\nnext line',
+        'postgres://alice:secret@db.internal/backend_api password=hunter2\nnext line',
       ),
       { code: 'ECONNREFUSED' },
     );

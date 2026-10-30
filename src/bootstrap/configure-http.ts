@@ -1,4 +1,5 @@
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import { configureDocumentation } from '../documentation/configure-documentation.js';
 import { rejectCancelOrderBody } from '../orders/infrastructure/http/reject-cancel-order-body.middleware.js';
 import { rejectMalformedCancelOrderUrl } from '../orders/infrastructure/http/reject-malformed-cancel-order-url.middleware.js';
 import { INVALID_SUBMIT_ORDER_REQUEST_MESSAGE } from '../orders/infrastructure/http/http-messages.js';
@@ -36,4 +37,5 @@ export function configureHttpApplication(app: INestApplication): void {
       },
     ]),
   );
+  configureDocumentation(app);
 }

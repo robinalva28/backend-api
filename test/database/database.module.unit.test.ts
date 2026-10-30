@@ -55,7 +55,7 @@ describe('DatabaseModule', () => {
             () => ({
               PGHOST: 'db.internal',
               PGPORT: '5433',
-              PGDATABASE: 'cocos_test',
+              PGDATABASE: 'backend_api_test',
               PGUSER: 'tester',
               PGPASSWORD: 'local-password',
             }),
@@ -74,7 +74,7 @@ describe('DatabaseModule', () => {
     expect(pool.config).toEqual({
       host: 'db.internal',
       port: 5433,
-      database: 'cocos_test',
+      database: 'backend_api_test',
       user: 'tester',
       password: 'local-password',
     });
@@ -82,7 +82,7 @@ describe('DatabaseModule', () => {
 
     const error = Object.assign(
       new Error(
-        'postgres://alice:secret@db.internal/cocos password=hunter2\nnext line',
+        'postgres://alice:secret@db.internal/backend_api password=hunter2\nnext line',
       ),
       { code: 'ECONNREFUSED' },
     );

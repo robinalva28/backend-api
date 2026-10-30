@@ -7,14 +7,14 @@ describe('readPostgresConfig', () => {
       readPostgresConfig({
         PGHOST: 'db.internal',
         PGPORT: '5433',
-        PGDATABASE: 'cocos_test',
+        PGDATABASE: 'backend_api_test',
         PGUSER: 'tester',
         PGPASSWORD: 'local-password',
       }),
     ).toEqual({
       host: 'db.internal',
       port: 5433,
-      database: 'cocos_test',
+      database: 'backend_api_test',
       user: 'tester',
       password: 'local-password',
     });
@@ -24,9 +24,9 @@ describe('readPostgresConfig', () => {
     expect(readPostgresConfig({})).toEqual({
       host: '127.0.0.1',
       port: 5432,
-      database: 'cocos',
-      user: 'cocos',
-      password: 'cocos-local',
+      database: 'backend_api',
+      user: 'backend_api',
+      password: 'backend-api-local',
     });
   });
 
