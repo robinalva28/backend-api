@@ -36,6 +36,9 @@ export function testDatabaseConfig(): TestDatabaseConfig {
 export function applyTestDatabaseEnvironment(): TestDatabaseConfig {
   const config = testDatabaseConfig();
 
+  delete process.env['DATABASE_URL'];
+  delete process.env['PGSSLROOTCERT'];
+  delete process.env['PGSSLMODE'];
   process.env['PGHOST'] = config.host;
   process.env['PGPORT'] = String(config.port);
   process.env['PGDATABASE'] = config.database;

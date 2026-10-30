@@ -36,7 +36,7 @@ Stack: NestJS with Express, strict TypeScript/ESM, Node.js 24.22.1, PostgreSQL 1
    curl -fsS "$BASE_URL/users/1/portfolio"
    ```
 
-   The health check only probes the TCP listener; it does not verify database access or the migration. The order example below exercises the migrated schema.
+   The health check only probes the TCP listener; it does not re-check database access or the migration after the one-time startup probe. The order example below exercises the migrated schema.
 
 ## API usage
 
@@ -100,16 +100,20 @@ Defaults work without a `.env` file; see step 2 to create one.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `PORT` | `3000` | Host port in Compose; application listener in native mode. |
-| `PGHOST` | `127.0.0.1` | Native database host; Compose uses `db` internally. |
-| `PGPORT` | `5432` | Published database port; native connection port. |
-| `PGDATABASE` | `backend_api` | Development database name. |
-| `PGUSER` | `backend_api` | Database user. |
-| `PGPASSWORD` | `backend-api-local` | Local development password. |
+| `DATABASE_URL` | unset | Enables remote mode and takes precedence over `PG*`. Must be a PostgreSQL URL with verified TLS. |
+| `PGSSLROOTCERT` | unset | Optional CA file for a remote database that uses a private CA. |
+| `PGHOST` | `127.0.0.1` | Native database host; Compose uses `db` internally. Used only when `DATABASE_URL` is unset. |
+| `PGPORT` | `5432` | Published database port; native connection port. Used only when `DATABASE_URL` is unset. |
+| `PGDATABASE` | `backend_api` | Development database name. Used only when `DATABASE_URL` is unset. |
+| `PGUSER` | `backend_api` | Database user. Used only when `DATABASE_URL` is unset. |
+| `PGPASSWORD` | `backend-api-local` | Local development password. Used only when `DATABASE_URL` is unset. |
 | `PGTESTPORT` | `5433` | Published test database port. |
 | `LOG_LEVEL` | `info` | Minimum JSON log level: `error`, `warn`, or `info`. |
 | `SLOW_REQUEST_THRESHOLD_MS` | `1000` | Requests at or above this duration also emit a slow-request WARN. |
 
 Compose keeps container ports at 3000/5432. For example, `PORT=3001` changes the host API URL to `http://127.0.0.1:3001`; update `BASE_URL` accordingly. The project name is `backend-api`; its default volume is `backend-api_postgres-data`. Earlier volumes remain untouched. To reuse an existing environment, retain its Compose project name and database settings through environment overrides; names and credentials are not migrated automatically.
+
+The local `app` service never receives `DATABASE_URL`; the `app-remote` service receives only `DATABASE_URL` and the optional CA setting, so the two modes do not silently replace each other. Do not put real credentials in `.env.example` or versioned files.
 
 For native execution, start `db` and apply the migration from step 4, then use Node.js 24.22.1:
 
@@ -121,11 +125,32 @@ PORT=3002 npm start
 
 Use `http://127.0.0.1:3002` for that process. Its PostgreSQL settings come from the environment or `.env`.
 
+### Remote database mode
+
+Set `DATABASE_URL` in your environment or ignored `.env` file, then run the remote service. It does not start or depend on the local `db` service. Run only one of `app` and `app-remote` at a time because they share the host port:
+
+```sh
+docker compose --profile remote up --build --wait app-remote
+```
+
+`DATABASE_URL` takes precedence over every `PG*` variable. If it is absent, the application uses the local `PG*` configuration; if it is empty, malformed, unsafe, or the remote connection fails, startup or the request fails without falling back to the local database. The application probes the selected database once with `SELECT 1` before listening. Remote connections verify both the certificate and hostname. Accepted `sslmode` values (`require`, `verify-ca`, `verify-full`) all enforce full verification; use `verify-full` to state that intent explicitly. `ssl` accepts only `1` or `true`; unsafe or unknown modes, `uselibpqcompat` other than `false`, and repeated query parameters are rejected. TLS options are validated and removed from the URL before `pg` parses it, so they cannot overwrite the explicit TLS configuration. `sslnegotiation=postgres|direct` and client certificate files (`sslcert`, `sslkey`) are translated explicitly. Use `PGSSLROOTCERT=/path/to/ca.pem` or URL `sslrootcert` for a private CA; `PGSSLROOTCERT` takes priority when both are set and remains effective alongside `sslmode`. Certificate files must be available inside the container, so mount them explicitly.
+
+`channel_binding=disable` (also the default when omitted) sets `enableChannelBinding=false`; `channel_binding=prefer` sets it to `true`. In the installed `pg` 8.23.1 this only prefers SCRAM-SHA-256-PLUS when the server offers it; it does **not** require channel binding. `channel_binding=require` and unknown values are rejected with a configuration error. Use `prefer` only when optional negotiation meets your requirements; mandatory channel binding is unsupported by this implementation. See the [driver TLS and channel-binding documentation](https://node-postgres.com/features/ssl).
+
+Apply the same migration to the remote database only after confirming the destination and holding separate credentials:
+
+```sh
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 \
+  -f db/migrations/20261028-b04b-order-idempotency.sql
+```
+
+The remote role must own `orders` (or run through a role with equivalent ownership); `ALTER TABLE` is not a separately grantable table privilege. Do not run seed data, test suites, test orders, or destructive cleanup in the remote database. Verify the two nullable columns and the three named constraints before starting the remote application.
+
 ## Operational logs
 
 The application writes one JSON object per line to standard output. `LOG_LEVEL` filters events (`error`, `warn`, `info`; default `info`). Each request receives a validated or generated `X-Request-Id`, which is returned to the client and included in request, error, retry, replay, recovery, and transaction events. `accountUserId` is the validated route value, not authenticated identity; it is omitted for routes without an account or invalid identifiers. `orderId` appears when known.
 
-INFO records startup, one completion per request. WARN records transient retries, slow requests (`SLOW_REQUEST_THRESHOLD_MS`, default 1000 ms), and uncertain COMMIT outcomes. ERROR records definitive technical failures, failed recovery, and rollback or release problems. A normal 400 is only an access-log completion, not a WARN. Structured fields include the event timestamp, level, event name, request id, HTTP method, route template, status, duration, account, order, stage, commit outcome, attempt, delay, and sanitized technical code. Route recognition is case-insensitive, matching Express: uppercase paths retain the canonical route template and validated account identifier, including failed requests. Replay and recovery events never copy the idempotency key.
+INFO records startup, the local or remote mode, and one completion per request. WARN records transient retries, slow requests (`SLOW_REQUEST_THRESHOLD_MS`, default 1000 ms), and uncertain COMMIT outcomes. ERROR records definitive technical failures, failed recovery, and rollback or release problems. A normal 400 is only an access-log completion, not a WARN. Structured fields include the event timestamp, level, event name, request id, HTTP method, route template, status, duration, account, order, stage, commit outcome, attempt, delay, and sanitized technical code. Route recognition is case-insensitive, matching Express: uppercase paths retain the canonical route template and validated account identifier, including failed requests. Replay and recovery events never copy the idempotency key.
 
 Logs never include request or response bodies, query strings, raw paths with identifiers, connection URLs, credentials, emails, account numbers, or complete idempotency keys. Diagnostics keep the existing allow-listed error metadata sanitizer and never serialize arbitrary `Error` objects.
 
@@ -188,6 +213,8 @@ The unchanged [seed](database.sql) loads only when the volume is empty. After re
 - Database connection fails after editing `.env`: the volume was initialized with different credentials; restore them. If you intentionally want to discard all local database data, follow [Optional database reset](#optional-database-reset).
 - Search returns `[]` on a reused volume: the seed only loads into an empty volume.
 - `npm start` fails: run `npm run build` first and use Node.js 24.22.1.
+
+- Startup logs `application.start_failed`: the database URL is invalid, the selected database is unreachable, or configuration validation failed. The process exits; fix the configuration instead of expecting a local fallback.
 
 ## Design and limits
 

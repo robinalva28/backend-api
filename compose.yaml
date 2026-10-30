@@ -6,12 +6,28 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-app-base: &app-base
+  build:
+    context: .
+    target: runtime
+  init: true
+  ports:
+    - "127.0.0.1:${PORT:-3000}:3000"
+  healthcheck:
+    test:
+      - CMD
+      - node
+      - -e
+      - "const socket = require('node:net').connect(3000, '127.0.0.1', () => { socket.end(); process.exit(0); }); socket.setTimeout(2000, () => process.exit(1)); socket.on('error', () => process.exit(1));"
+    interval: 10s
+    timeout: 3s
+    start_period: 10s
+    retries: 3
+  logging: *default-logging
+
 services:
   app:
-    build:
-      context: .
-      target: runtime
-    init: true
+    <<: *app-base
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -22,22 +38,20 @@ services:
       PGPASSWORD: ${PGPASSWORD:-backend-api-local}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SLOW_REQUEST_THRESHOLD_MS: ${SLOW_REQUEST_THRESHOLD_MS:-1000}
-    ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "const socket = require('node:net').connect(3000, '127.0.0.1', () => { socket.end(); process.exit(0); }); socket.setTimeout(2000, () => process.exit(1)); socket.on('error', () => process.exit(1));"
-      interval: 10s
-      timeout: 3s
-      start_period: 10s
-      retries: 3
-    logging: *default-logging
+
+  app-remote:
+    <<: *app-base
+    profiles: [remote]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SLOW_REQUEST_THRESHOLD_MS: ${SLOW_REQUEST_THRESHOLD_MS:-1000}
 
   db:
     image: postgres:18.6-bookworm

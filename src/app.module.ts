@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { readPostgresConfig } from './database/postgres.config.js';
 import { InstrumentsModule } from './instruments/instruments.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { PortfolioModule } from './portfolio/portfolio.module.js';
@@ -15,6 +16,7 @@ import { TransactionsModule } from './transactions/transactions.module.js';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      ignoreEnvFile: process.env['NODE_ENV'] === 'test',
       validate(environment: Record<string, unknown>) {
         const port = Number(environment['PORT'] ?? 3000);
 
@@ -26,6 +28,16 @@ import { TransactionsModule } from './transactions/transactions.module.js';
         const slowRequestThresholdMs = readSlowRequestThresholdMs(
           readOptionalString(environment, 'SLOW_REQUEST_THRESHOLD_MS'),
         );
+
+        readPostgresConfig({
+          DATABASE_URL: readOptionalString(environment, 'DATABASE_URL'),
+          PGSSLROOTCERT: readOptionalString(environment, 'PGSSLROOTCERT'),
+          PGHOST: readOptionalString(environment, 'PGHOST'),
+          PGPORT: readOptionalString(environment, 'PGPORT'),
+          PGDATABASE: readOptionalString(environment, 'PGDATABASE'),
+          PGUSER: readOptionalString(environment, 'PGUSER'),
+          PGPASSWORD: readOptionalString(environment, 'PGPASSWORD'),
+        });
 
         return {
           ...environment,

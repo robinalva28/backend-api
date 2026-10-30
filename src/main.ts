@@ -9,6 +9,7 @@ import type { Pool } from 'pg';
 import { AppModule } from './app.module.js';
 import { configureHttpApplication } from './bootstrap/configure-http.js';
 import { PG_POOL } from './database/database.tokens.js';
+import { postgresConnectionMode } from './database/postgres.config.js';
 import { diagnosticCode, sanitizeDiagnostic } from './shared/diagnostics.js';
 import { getOperationalLogger } from './shared/logging/operational-logger.js';
 
@@ -24,6 +25,9 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   const logger = getOperationalLogger();
   const port = config.getOrThrow<number>('PORT');
+  const connectionMode = postgresConnectionMode({
+    DATABASE_URL: config.get<string>('DATABASE_URL'),
+  });
   const slowRequestThresholdMs = config.getOrThrow<number>(
     'SLOW_REQUEST_THRESHOLD_MS',
   );
@@ -31,10 +35,10 @@ async function bootstrap(): Promise<void> {
   configureHttpApplication(app, { logger, slowRequestThresholdMs });
   app.enableShutdownHooks();
 
-  logger.info('application.starting', { port });
+  logger.info('application.starting', { connectionMode, port });
   await app.get<Pool>(PG_POOL).query('SELECT 1');
   await app.listen(port, '0.0.0.0');
-  logger.info('application.listening', { port });
+  logger.info('application.listening', { connectionMode, port });
 }
 
 try {
