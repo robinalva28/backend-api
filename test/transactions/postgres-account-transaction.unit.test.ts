@@ -1,6 +1,7 @@
 import type { QueryResult, QueryResultRow } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 import { AccountTransactionError } from '../../src/transactions/application/errors/account-transaction.error.js';
+import { RecordingLogger } from '../support/recording-logger.js';
 import {
   PostgresAccountTransactionRunner,
   type PostgresConnectionPool,
@@ -849,6 +850,77 @@ describe('PostgresAccountTransactionRunner', () => {
     });
     expect(caught?.releaseError).toBe(releaseFailure);
     expect(client.releases).toEqual([undefined]);
+  });
+
+  it('warns once when a COMMIT outcome is uncertain', async () => {
+    const logger = new RecordingLogger();
+    const client = new FakePostgresClient({
+      lockRows: [{ id: 7 }],
+      commitError: sqlStateError('08006'),
+    });
+    const runner = new PostgresAccountTransactionRunner(
+      createPool([client]),
+      logger,
+    );
+
+    await expect(
+      runner.run(7, vi.fn().mockResolvedValue('value')),
+    ).rejects.toMatchObject({
+      stage: 'commit',
+      commitOutcome: 'uncertain',
+    });
+
+    expect(logger.entries).toEqual([
+      {
+        level: 'warn',
+        event: 'orders.transaction.commit_uncertain',
+        fields: {
+          stage: 'commit',
+          commitOutcome: 'uncertain',
+          code: '08006',
+        },
+      },
+    ]);
+  });
+
+  it('logs rollback and release failures as definitive technical errors', async () => {
+    const logger = new RecordingLogger();
+    const rollbackFailure = sqlStateError('08006');
+    const releaseFailure = sqlStateError('08006');
+    const client = new FakePostgresClient({
+      lockRows: [{ id: 7 }],
+      lockError: sqlStateError('40001'),
+      rollbackError: rollbackFailure,
+      releaseError: releaseFailure,
+    });
+    const runner = new PostgresAccountTransactionRunner(
+      createPool([client]),
+      logger,
+    );
+
+    await expect(
+      runner.run(7, vi.fn().mockResolvedValue('value')),
+    ).rejects.toMatchObject({
+      stage: 'lock',
+      commitOutcome: 'not-attempted',
+    });
+
+    expect(logger.events('error')).toEqual([
+      'orders.transaction.rollback_failed',
+      'orders.transaction.release_failed',
+    ]);
+    expect(logger.entries[0]?.fields).toMatchObject({
+      stage: 'rollback',
+      commitOutcome: 'not-attempted',
+      code: '08006',
+      rollbackFailed: true,
+    });
+    expect(logger.entries[1]?.fields).toMatchObject({
+      stage: 'release',
+      commitOutcome: 'not-attempted',
+      code: '08006',
+      releaseFailed: true,
+    });
   });
 });
 

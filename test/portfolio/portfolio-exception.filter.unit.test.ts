@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Logger,
   type ArgumentsHost,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -12,6 +11,7 @@ import {
   PORTFOLIO_USER_NOT_FOUND_MESSAGE,
 } from '../../src/portfolio/infrastructure/http/http-messages.js';
 import { PortfolioExceptionFilter } from '../../src/portfolio/infrastructure/http/portfolio-exception.filter.js';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 
 interface ResponseSpies {
   readonly host: ArgumentsHost;
@@ -37,7 +37,9 @@ function createHost(): ResponseSpies {
 let log: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  log = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  log = vi
+    .spyOn(JsonOperationalLogger.prototype, 'error')
+    .mockImplementation(() => undefined);
 });
 
 describe('PortfolioExceptionFilter', () => {
@@ -84,9 +86,9 @@ describe('PortfolioExceptionFilter', () => {
         message: PORTFOLIO_UNAVAILABLE_MESSAGE,
       });
       expect(log).toHaveBeenCalledTimes(1);
-      expect(String(log.mock.calls[0]?.[0])).not.toContain('secret');
-      expect(String(log.mock.calls[0]?.[0])).not.toContain('marketdata');
-      expect(String(log.mock.calls[0]?.[0])).toContain('portfolio-read');
+      expect(JSON.stringify(log.mock.calls[0]?.[1])).not.toContain('secret');
+      expect(JSON.stringify(log.mock.calls[0]?.[1])).not.toContain('marketdata');
+      expect(JSON.stringify(log.mock.calls[0]?.[1])).toContain('portfolio-read');
     },
   );
 
@@ -101,6 +103,6 @@ describe('PortfolioExceptionFilter', () => {
       message: PORTFOLIO_UNAVAILABLE_MESSAGE,
     });
     expect(log).toHaveBeenCalledTimes(1);
-    expect(String(log.mock.calls[0]?.[0])).not.toContain('raw driver detail');
+    expect(JSON.stringify(log.mock.calls[0]?.[1])).not.toContain('raw driver detail');
   });
 });

@@ -13,6 +13,7 @@ import type { SubmitOrderUseCase } from '../../application/ports/in/submit-order
 import type { OrderIntent } from '../../domain/order-intent.js';
 import type { PersistedOrderStatus } from '../../domain/persisted-order.js';
 import { SUBMIT_ORDER_USE_CASE } from '../../orders.tokens.js';
+import { annotateRequestOrderId } from '../../../shared/logging/request-context.js';
 import { SubmitOrderBodyPipe } from './submit-order-body.pipe.js';
 import { SubmitOrderExceptionFilter } from './submit-order-exception.filter.js';
 import { requireSubmitOrderIdempotencyKey } from './submit-order-idempotency-key.js';
@@ -48,6 +49,7 @@ export class SubmitOrderController {
       intent,
     });
 
+    annotateRequestOrderId(result.orderId);
     response.status(result.replayed ? 200 : 201);
 
     return {

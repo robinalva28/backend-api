@@ -1,5 +1,4 @@
 import type { INestApplication } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { request as httpRequest } from 'node:http';
 import request from 'supertest';
@@ -12,6 +11,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 import { configureHttpApplication } from '../../src/bootstrap/configure-http.js';
 import { CancelOrderError } from '../../src/orders/application/errors/cancel-order.error.js';
 import { OrderCancellationMappingError } from '../../src/orders/application/errors/order-cancellation-mapping.error.js';
@@ -422,7 +422,7 @@ describe('POST /users/:userId/orders/:orderId/cancel errors', () => {
     ['generic technical error', new Error('sensitive SQL detail')],
   ])('maps %s to the exact sanitized 500', async (_label, failure) => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     execute.mockRejectedValueOnce(failure);
 
@@ -434,7 +434,7 @@ describe('POST /users/:userId/orders/:orderId/cancel errors', () => {
     expect(JSON.stringify(response.body)).not.toContain('sensitive');
     expect(log).toHaveBeenCalledTimes(1);
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=order-cancellation');
     expect(logged).not.toContain('sensitive');
     expect(logged).not.toContain('\n');

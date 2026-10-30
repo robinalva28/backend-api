@@ -3,10 +3,10 @@ import {
   Catch,
   type ArgumentsHost,
   type ExceptionFilter,
-  Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { sanitizeDiagnostic } from '../../../shared/diagnostics.js';
+import { failureLogFields } from '../../../shared/logging/failure-fields.js';
+import { getOperationalLogger } from '../../../shared/logging/operational-logger.js';
 import {
   INVALID_SEARCH_REQUEST_MESSAGE,
   SEARCH_UNAVAILABLE_MESSAGE,
@@ -14,8 +14,6 @@ import {
 
 @Catch()
 export class InstrumentsExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(InstrumentsExceptionFilter.name);
-
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
@@ -24,11 +22,9 @@ export class InstrumentsExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    this.logger.error(
-      `Instrument search failed: ${sanitizeDiagnostic(
-        exception,
-        'instrument-search',
-      )}`,
+    getOperationalLogger().error(
+      'instruments.search.failed',
+      failureLogFields(exception, 'instrument-search'),
     );
     response.status(500).json({ message: SEARCH_UNAVAILABLE_MESSAGE });
   }

@@ -1,12 +1,12 @@
 import {
   BadRequestException,
-  Logger,
   type ArgumentsHost,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import { SearchInstrumentsError } from '../../src/instruments/application/errors/search-instruments.error.js';
 import { InstrumentsExceptionFilter } from '../../src/instruments/infrastructure/http/instruments-exception.filter.js';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 
 function createHost(): {
   host: ArgumentsHost;
@@ -33,7 +33,7 @@ function createHost(): {
 describe('InstrumentsExceptionFilter', () => {
   it('returns the generic 400 without logging validation details', () => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     const { host, response } = createHost();
     const filter = new InstrumentsExceptionFilter();
@@ -47,7 +47,7 @@ describe('InstrumentsExceptionFilter', () => {
 
   it('returns the generic 500 and logs only sanitized diagnostics', () => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     const { host, response } = createHost();
     const filter = new InstrumentsExceptionFilter();
@@ -66,7 +66,7 @@ describe('InstrumentsExceptionFilter', () => {
     });
     expect(log).toHaveBeenCalledTimes(1);
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=instrument-search');
     expect(logged).toContain('SearchInstrumentsError');
     expect(logged).toContain('ECONNREFUSED');
@@ -79,7 +79,7 @@ describe('InstrumentsExceptionFilter', () => {
 
   it('sanitizes non-error exceptions as generic 500 failures', () => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     const { host, response } = createHost();
     const filter = new InstrumentsExceptionFilter();
@@ -90,6 +90,6 @@ describe('InstrumentsExceptionFilter', () => {
     expect(response.json).toHaveBeenCalledWith({
       message: 'Instrument search could not be completed.',
     });
-    expect(String(log.mock.calls[0]?.[0])).not.toContain('secret-value');
+    expect(JSON.stringify(log.mock.calls[0]?.[1])).not.toContain('secret-value');
   });
 });

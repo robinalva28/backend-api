@@ -37,6 +37,7 @@ import type {
   AccountTransactionRunner,
 } from '../../src/transactions/application/ports/out/account-transaction.port.js';
 import { NeverSubmitOrderRecovery } from '../support/never-recovery.js';
+import { RecordingLogger } from '../support/recording-logger.js';
 
 const USER_ID = 5201;
 const KEY = '22222222-2222-4222-8222-222222222222';
@@ -395,6 +396,30 @@ describe('SubmitOrderService', () => {
       expect(now).not.toHaveBeenCalled();
     },
   );
+
+  it('logs a replay event without copying the idempotency key', async () => {
+    const intent = sizeIntent();
+    const order = persistedOrder(intent, 'CANCELLED');
+    const { context } = createContext({ order });
+    const logger = new RecordingLogger();
+    const service = new SubmitOrderService(
+      new FakeRunner(context),
+      { now: () => new Date(FIXED_DATE) },
+      new NeverSubmitOrderRecovery(),
+      logger,
+    );
+
+    await service.execute(input(intent));
+
+    expect(logger.entries).toEqual([
+      {
+        level: 'info',
+        event: 'orders.replay.recovered',
+        fields: { orderId: order.id, orderStatus: 'CANCELLED' },
+      },
+    ]);
+    expect(JSON.stringify(logger.entries)).not.toContain(KEY);
+  });
 
   it('returns a typed conflict for the same key with a different intent', async () => {
     const stored = sizeIntent({ size: '10' });

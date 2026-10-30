@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SubmitOrderError } from '../../src/orders/application/errors/submit-order.error.js';
 import { RetryingSubmitOrderRunner } from '../../src/orders/application/retrying-submit-order.runner.js';
 import { AccountTransactionError } from '../../src/transactions/application/errors/account-transaction.error.js';
+import { RecordingLogger } from '../support/recording-logger.js';
 import type {
   AccountTransactionContext,
   AccountTransactionResult,
@@ -61,18 +62,20 @@ function eligibleFailure(
 function createRunner(
   outcomes: readonly unknown[],
   events?: string[],
+  logger = new RecordingLogger(),
 ): {
   readonly retry: RetryingSubmitOrderRunner;
   readonly runner: ScriptedRunner;
   readonly waits: ReturnType<typeof vi.fn>;
+  readonly logger: RecordingLogger;
 } {
   const runner = new ScriptedRunner(outcomes, events);
   const waits = vi.fn(async (milliseconds: number): Promise<void> => {
     events?.push(`wait:${milliseconds}`);
   });
-  const retry = new RetryingSubmitOrderRunner(runner, waits);
+  const retry = new RetryingSubmitOrderRunner(runner, waits, logger);
 
-  return { retry, runner, waits };
+  return { retry, runner, waits, logger };
 }
 
 describe('RetryingSubmitOrderRunner', () => {
@@ -88,7 +91,7 @@ describe('RetryingSubmitOrderRunner', () => {
 
   it('recovers after one eligible transient failure with a single 50 ms wait', async () => {
     const outcomes = [eligibleFailure(), 'success'];
-    const { retry, runner, waits } = createRunner(outcomes);
+    const { retry, runner, waits, logger } = createRunner(outcomes);
 
     await expect(
       retry.run(USER_ID, async () => 'value'),
@@ -98,6 +101,17 @@ describe('RetryingSubmitOrderRunner', () => {
     expect(waits.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
       ...DELAYS,
     ]);
+    expect(logger.events()).toEqual(['orders.retry.scheduled']);
+    expect(logger.entries[0]?.level).toBe('warn');
+    expect(logger.entries[0]?.fields).toMatchObject({
+      accountUserId: USER_ID,
+      attempt: 2,
+      delayMs: 50,
+      stage: 'work',
+      commitOutcome: 'not-attempted',
+      code: '40001',
+    });
+    expect(JSON.stringify(logger.entries)).not.toContain('idempotency');
     expect(runner.works.every((work) => work === runner.works[0])).toBe(true);
   });
 

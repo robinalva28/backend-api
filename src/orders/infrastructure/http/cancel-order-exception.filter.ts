@@ -1,12 +1,12 @@
 import {
   BadRequestException,
   Catch,
-  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { sanitizeDiagnostic } from '../../../shared/diagnostics.js';
+import { failureLogFields } from '../../../shared/logging/failure-fields.js';
+import { getOperationalLogger } from '../../../shared/logging/operational-logger.js';
 import { CancelOrderError } from '../../application/errors/cancel-order.error.js';
 import {
   CANCEL_ORDER_UNAVAILABLE_MESSAGE,
@@ -17,8 +17,6 @@ import {
 
 @Catch()
 export class CancelOrderExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(CancelOrderExceptionFilter.name);
-
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
@@ -46,11 +44,9 @@ export class CancelOrderExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    this.logger.error(
-      `Order cancellation failed: ${sanitizeDiagnostic(
-        exception,
-        'order-cancellation',
-      )}`,
+    getOperationalLogger().error(
+      'orders.cancellation.failed',
+      failureLogFields(exception, 'order-cancellation'),
     );
     response
       .status(500)

@@ -1,9 +1,9 @@
-import { Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseModule } from '../../src/database/database.module.js';
 import { PG_POOL } from '../../src/database/database.tokens.js';
+import { JsonOperationalLogger } from '../../src/shared/logging/operational-logger.js';
 
 const pgMock = vi.hoisted(() => {
   const created: FakePool[] = [];
@@ -43,7 +43,7 @@ afterEach(() => {
 describe('DatabaseModule', () => {
   it('creates the configured pool, emits sanitized idle errors and closes it', async () => {
     const log = vi
-      .spyOn(Logger.prototype, 'error')
+      .spyOn(JsonOperationalLogger.prototype, 'error')
       .mockImplementation(() => undefined);
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -90,7 +90,7 @@ describe('DatabaseModule', () => {
 
     expect(log).toHaveBeenCalledTimes(1);
 
-    const logged = String(log.mock.calls[0]?.[0]);
+    const logged = JSON.stringify(log.mock.calls[0]?.[1]);
     expect(logged).toContain('operation=postgres-idle-client');
     expect(logged).toContain('ECONNREFUSED');
     expect(logged).toContain('connection refused');

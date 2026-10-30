@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { getOperationalLogger } from '../shared/logging/operational-logger.js';
 import type { AccountTransactionRunner } from '../transactions/application/ports/out/account-transaction.port.js';
 import { TransactionsModule } from '../transactions/transactions.module.js';
 import { ACCOUNT_TRANSACTION_RUNNER } from '../transactions/transactions.tokens.js';
@@ -44,9 +45,14 @@ import {
         recovery: SubmitOrderRecovery,
       ): SubmitOrderService =>
         new SubmitOrderService(
-          new RetryingSubmitOrderRunner(runner),
+          new RetryingSubmitOrderRunner(
+            runner,
+            undefined,
+            getOperationalLogger(),
+          ),
           clock,
           recovery,
+          getOperationalLogger(),
         ),
     },
     {

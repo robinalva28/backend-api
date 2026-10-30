@@ -25,6 +25,7 @@ import type {
 import type { LatestQuoteRepository } from '../../src/quotes/application/ports/out/latest-quote.repository.js';
 import type { AccountMovementRepository } from '../../src/resources/application/ports/out/account-movement.repository.js';
 import { AccountTransactionError } from '../../src/transactions/application/errors/account-transaction.error.js';
+import { RecordingLogger } from '../support/recording-logger.js';
 import type {
   AccountTransactionContext,
   AccountTransactionResult,
@@ -113,11 +114,13 @@ class RecordingRecovery implements SubmitOrderRecovery {
 function createSubmitService(
   runner: AccountTransactionRunner,
   recovery: SubmitOrderRecovery,
+  logger = new RecordingLogger(),
 ): SubmitOrderService {
   return new SubmitOrderService(
     runner,
     { now: () => new Date(FIXED_DATE) },
     recovery,
+    logger,
   );
 }
 
@@ -148,6 +151,32 @@ describe('SubmitOrderService uncertain-COMMIT recovery', () => {
       expect(recovery.inputs).toHaveLength(1);
     },
   );
+
+  it('logs recovery success with the order id and without the idempotency key', async () => {
+    const orderIntent = intent();
+    const order = persistedOrder(orderIntent, 'CANCELLED');
+    const recovery = new RecordingRecovery({ status: 'recovered', order });
+    const logger = new RecordingLogger();
+
+    await createSubmitService(
+      new FailingSubmitRunner(uncertainCommit()),
+      recovery,
+      logger,
+    ).execute({
+      userId: USER_ID,
+      idempotencyKey: KEY,
+      intent: orderIntent,
+    });
+
+    expect(logger.entries).toEqual([
+      {
+        level: 'info',
+        event: 'orders.recovery.recovered',
+        fields: { orderId: ORDER_ID, orderStatus: 'CANCELLED' },
+      },
+    ]);
+    expect(JSON.stringify(logger.entries)).not.toContain(KEY);
+  });
 
   it('maps a different recovered intent to the approved conflict', async () => {
     const recovery = new RecordingRecovery({ status: 'conflict' });
@@ -181,6 +210,65 @@ describe('SubmitOrderService uncertain-COMMIT recovery', () => {
       'completion-failed',
     );
     expect(recovery.inputs).toHaveLength(1);
+  });
+
+  it('logs one definitive failure event when recovery throws', async () => {
+    const failure = new AccountTransactionError({
+      stage: 'connection',
+      commitOutcome: 'not-attempted',
+      clientDisposition: 'not-acquired',
+      cause: Object.assign(new Error('connection failed'), {
+        code: 'ECONNREFUSED',
+      }),
+    });
+    const recovery = new RecordingRecovery({ error: failure });
+    const logger = new RecordingLogger();
+
+    await expectSubmitError(
+      createSubmitService(
+        new FailingSubmitRunner(uncertainCommit()),
+        recovery,
+        logger,
+      ).execute({
+        userId: USER_ID,
+        idempotencyKey: KEY,
+        intent: intent(),
+      }),
+      'completion-failed',
+    );
+
+    expect(logger.entries).toHaveLength(1);
+    expect(logger.entries[0]).toMatchObject({
+      level: 'error',
+      event: 'orders.recovery.failed',
+      fields: {
+        code: 'ECONNREFUSED',
+        stage: 'connection',
+        commitOutcome: 'not-attempted',
+      },
+    });
+    expect(JSON.stringify(logger.entries)).not.toContain(KEY);
+  });
+
+  it('logs one definitive failure event when recovery finds no order', async () => {
+    const recovery = new RecordingRecovery({ status: 'unrecoverable' });
+    const logger = new RecordingLogger();
+
+    await expectSubmitError(
+      createSubmitService(
+        new FailingSubmitRunner(uncertainCommit()),
+        recovery,
+        logger,
+      ).execute({
+        userId: USER_ID,
+        idempotencyKey: KEY,
+        intent: intent(),
+      }),
+      'completion-failed',
+    );
+
+    expect(logger.events()).toEqual(['orders.recovery.failed']);
+    expect(logger.entries[0]?.level).toBe('error');
   });
 
   it('stops after one recovery even when recovery fails transiently', async () => {

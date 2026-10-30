@@ -5,6 +5,11 @@ import { PostgresPersistedOrderRepository } from '../../../orders/infrastructure
 import { PostgresPreparedOrderRepository } from '../../../orders/infrastructure/persistence/postgres-prepared-order.repository.js';
 import { PostgresLatestQuoteRepository } from '../../../quotes/infrastructure/persistence/postgres-latest-quote.repository.js';
 import { PostgresAccountMovementRepository } from '../../../resources/infrastructure/persistence/postgres-account-movement.repository.js';
+import { diagnosticCode } from '../../../shared/diagnostics.js';
+import {
+  noopOperationalLogger,
+  type OperationalLogger,
+} from '../../../shared/logging/operational-logger.js';
 import { AccountTransactionError } from '../../application/errors/account-transaction.error.js';
 import type { AccountTransactionTransientFailure } from '../../application/errors/account-transaction.error.js';
 import type {
@@ -48,7 +53,10 @@ const TRANSIENT_SQL_STATES: ReadonlyMap<
 export class PostgresAccountTransactionRunner
   implements AccountTransactionRunner
 {
-  constructor(private readonly pool: PostgresConnectionPool) {}
+  constructor(
+    private readonly pool: PostgresConnectionPool,
+    private readonly logger: OperationalLogger = noopOperationalLogger,
+  ) {}
 
   async run<T>(
     userId: number,
@@ -94,6 +102,7 @@ export class PostgresAccountTransactionRunner
       } catch (error) {
         const rollbackError = await rollback(client);
         discardClient = rollbackError !== undefined;
+        this.logRollbackFailure(rollbackError, 'not-attempted');
         throw new AccountTransactionError({
           stage: 'lock',
           commitOutcome: 'not-attempted',
@@ -112,6 +121,7 @@ export class PostgresAccountTransactionRunner
 
         if (rollbackError !== undefined) {
           discardClient = true;
+          this.logRollbackFailure(rollbackError, 'not-attempted');
           throw new AccountTransactionError({
             stage: 'rollback',
             commitOutcome: 'not-attempted',
@@ -132,6 +142,7 @@ export class PostgresAccountTransactionRunner
       } catch (error) {
         const rollbackError = await rollback(client);
         discardClient = rollbackError !== undefined;
+        this.logRollbackFailure(rollbackError, 'not-attempted');
         throw new AccountTransactionError({
           stage: 'work',
           commitOutcome: 'not-attempted',
@@ -152,6 +163,8 @@ export class PostgresAccountTransactionRunner
       } catch (error) {
         const rollbackError = await rollback(client);
         discardClient = true;
+        this.logCommitUncertain(error);
+        this.logRollbackFailure(rollbackError, 'uncertain');
         throw new AccountTransactionError({
           stage: 'commit',
           commitOutcome: 'uncertain',
@@ -180,6 +193,8 @@ export class PostgresAccountTransactionRunner
 
       const rollbackError = await rollback(client);
       discardClient = true;
+      this.logCommitUncertain();
+      this.logRollbackFailure(rollbackError, 'uncertain');
       throw new AccountTransactionError({
         stage: 'commit',
         commitOutcome: 'uncertain',
@@ -208,6 +223,17 @@ export class PostgresAccountTransactionRunner
           client.release();
         }
       } catch (releaseError) {
+        this.logger.error('orders.transaction.release_failed', {
+          stage: 'release',
+          commitOutcome:
+            pendingError?.commitOutcome ??
+            (commitConfirmed ? 'confirmed' : 'not-attempted'),
+          ...(diagnosticCode(releaseError) === undefined
+            ? {}
+            : { code: diagnosticCode(releaseError) }),
+          releaseFailed: true,
+        });
+
         if (pendingError !== undefined) {
           pendingError.markReleaseFailed(releaseError);
         } else {
@@ -220,6 +246,34 @@ export class PostgresAccountTransactionRunner
         }
       }
     }
+  }
+
+  private logCommitUncertain(cause?: unknown): void {
+    this.logger.warn('orders.transaction.commit_uncertain', {
+      stage: 'commit',
+      commitOutcome: 'uncertain',
+      ...(cause === undefined || diagnosticCode(cause) === undefined
+        ? {}
+        : { code: diagnosticCode(cause) }),
+    });
+  }
+
+  private logRollbackFailure(
+    rollbackError: unknown,
+    commitOutcome: 'not-attempted' | 'uncertain',
+  ): void {
+    if (rollbackError === undefined) {
+      return;
+    }
+
+    this.logger.error('orders.transaction.rollback_failed', {
+      stage: 'rollback',
+      commitOutcome,
+      ...(diagnosticCode(rollbackError) === undefined
+        ? {}
+        : { code: diagnosticCode(rollbackError) }),
+      rollbackFailed: true,
+    });
   }
 }
 
