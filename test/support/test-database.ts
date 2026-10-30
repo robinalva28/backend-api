@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 
-const TEST_DATABASE = 'cocos_test';
+const TEST_DATABASE = 'backend_api_test';
 
 export interface TestDatabaseConfig {
   host: string;
@@ -14,11 +14,11 @@ export function testDatabaseConfig(): TestDatabaseConfig {
   const host = process.env['TEST_PGHOST'] ?? '127.0.0.1';
   const port = Number(process.env['PGTESTPORT'] ?? '5433');
   const database = process.env['TEST_PGDATABASE'] ?? TEST_DATABASE;
-  const user = process.env['TEST_PGUSER'] ?? process.env['PGUSER'] ?? 'cocos';
+  const user = process.env['TEST_PGUSER'] ?? process.env['PGUSER'] ?? 'backend_api';
   const password =
     process.env['TEST_PGPASSWORD'] ??
     process.env['PGPASSWORD'] ??
-    'cocos-local';
+    'backend-api-local';
 
   if (database !== TEST_DATABASE) {
     throw new Error(

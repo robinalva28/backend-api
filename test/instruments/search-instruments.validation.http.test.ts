@@ -95,6 +95,16 @@ describe('GET /instruments validation', () => {
     expect(searchByText).toHaveBeenCalledWith('PAMP');
   });
 
+  it('accepts a raw value longer than 255 characters when trim leaves PAMP', async () => {
+    await request(app.getHttpServer())
+      .get('/instruments')
+      .query({ query: ' '.repeat(256) + 'PAMP' })
+      .expect(200);
+
+    expect(searchByText).toHaveBeenCalledTimes(1);
+    expect(searchByText).toHaveBeenCalledWith('PAMP');
+  });
+
   it('accepts numeric text as a valid query', async () => {
     await request(app.getHttpServer())
       .get('/instruments?query=123')

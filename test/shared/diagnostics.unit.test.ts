@@ -7,7 +7,7 @@ describe('sanitizeDiagnostic', () => {
   it('emits static operation, validated name and mapped code without raw messages', () => {
     const error = Object.assign(
       new Error(
-        'postgres://alice:secret@db.internal/cocos password=hunter2\nsecond line',
+        'postgres://alice:secret@db.internal/backend_api password=hunter2\nsecond line',
       ),
       { code: 'ECONNREFUSED' },
     );

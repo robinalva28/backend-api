@@ -2,7 +2,7 @@
 
 ## Objetivo y fuentes
 
-Resolver el challenge backend de Cocos dentro del alcance autorizado por el usuario.
+Desarrollar Backend-API según la consigna backend dentro del alcance autorizado por el usuario.
 
 Fuentes: [repositorio original](https://github.com/cocoscap/cocos-challenge), [consigna backend](backend-challenge.md), [datos y esquema originales](database.sql) y [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). El análisis está en [requisitos](docs/requisitos.md). La etapa vigente, sus restricciones temporales, el estado e historia del repositorio, las decisiones y los pendientes se mantienen en el [plan](docs/plan.md).
 
